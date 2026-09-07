@@ -1,0 +1,37 @@
+name: CU NEX Auto Scraper
+
+on:
+  schedule:
+    # รันอัตโนมัติทุก 15 นาที ช่วง 08:00 - 19:00 น. เวลาไทย (01:00 - 12:00 UTC) จันทร์-ศุกร์
+    - cron: '*/15 1-12 * * 1-5'
+  
+  # ให้กดสั่งรันด้วยมือได้
+  workflow_dispatch:
+
+jobs:
+  scrape-and-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Run Scraper
+        env:
+          CUNEX_USER: ${{ secrets.CUNEX_USER }}
+          CUNEX_PASS: ${{ secrets.CUNEX_PASS }}
+          BUILDING_ID: "3"
+          GAS_WEBHOOK_URL: ${{ secrets.GAS_WEBHOOK_URL }}
+        run: |
+          python cunex_scraper_cloud.py
