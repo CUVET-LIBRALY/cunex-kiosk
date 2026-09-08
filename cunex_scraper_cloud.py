@@ -33,7 +33,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # ตรวจสอบสีเทา (ปิดทำการ)
+        # ปิดบริการ (สีเทา)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -43,16 +43,12 @@ def parse_cell_status(cell):
                 nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
                 if len(nums) >= 3:
                     r, g, b = nums[0], nums[1], nums[2]
-                    # สีเทา
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
-                    # สีแดง / ชมพู (จองแล้ว)
                     if r > g + 40 and r > b:
                         return "busy"
-                    # สีเหลือง (สนใจ/รอนุมัติ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
-                    # สีเขียว (ว่าง)
                     if g > r + 30 and g > b + 30:
                         return "free"
 
@@ -81,9 +77,12 @@ def run_scraper():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        # ปรับ User-Agent และพารามิเตอร์เบราว์เซอร์ให้เหมือนผู้ใช้ทั่วไป
         context = browser.new_context(
             viewport={"width": 1440, "height": 900},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            locale="th-TH",
+            timezone_id="Asia/Bangkok"
         )
         page = context.new_page()
 
@@ -92,59 +91,65 @@ def run_scraper():
             page.goto(LOGIN_URL, timeout=45000, wait_until="domcontentloaded")
             time.sleep(2)
 
-            # ตรวจสอบการเข้าสู่ระบบ
+            # ตรวจสอบฟอร์มเข้าสู่ระบบ
             if page.locator("input[type='password']").count() > 0:
                 print("พบหน้าเข้าสู่ระบบ กำลังกรอกรหัส...")
-                user_input = page.locator("input[type='text'], input[name*='User'], input[name*='user'], input[id*='User']").first
-                pass_input = page.locator("input[type='password']").first
-                
-                user_input.fill(CUNEX_USER or "")
-                pass_input.fill(CUNEX_PASS or "")
-                
-                login_btn = page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ'], input[value*='Login']").first
-                login_btn.click()
-                print("คลิกปุ่มเข้าสู่ระบบแล้ว กำลังรอเซสชัน...")
+                page.locator("input[type='text'], input[name*='User'], input[id*='User']").first.fill(CUNEX_USER or "")
+                page.locator("input[type='password']").first.fill(CUNEX_PASS or "")
+                page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ']").first.click()
+                print("คลิกปุ่มเข้าสู่ระบบแล้ว กำลังรอ Session...")
                 time.sleep(4)
 
-            # เปิดไปยังหน้าค้นหาห้อง
+            # เข้าสู่หน้าค้นหาตารางการจอง
             print(f"กำลังเปิดหน้าค้นหาห้อง: {TARGET_URL}")
             page.goto(TARGET_URL, timeout=45000, wait_until="domcontentloaded")
             time.sleep(3)
 
-            # 1. เลือกตึกผ่าน Dropdown
+            # 1. เลือกตึก อาคาร 60 ปี
             print("กำลังเลือกตึก อาคาร 60 ปี...")
-            building_selector = "#MainContentPlaceHolder_ddlBuilding"
-            page.wait_for_selector(building_selector, timeout=15000)
-            page.select_option(building_selector, value="3")
-            print("เลือกตึกค่า 3 เรียบร้อย รอการตอบสนอง 2 วินาที...")
+            page.wait_for_selector("#MainContentPlaceHolder_ddlBuilding", timeout=15000)
+            page.select_option("#MainContentPlaceHolder_ddlBuilding", value="3")
             time.sleep(2)
 
-            # 2. คลิกปุ่มค้นหา LinkButton โดยตรง
-            print("กำลังคลิกปุ่มค้นหา (#MainContentPlaceHolder_searchLinkButton)...")
-            btn = page.locator("#MainContentPlaceHolder_searchLinkButton")
-            if btn.count() > 0:
-                btn.click()
-                print("คลิกปุ่มค้นหาสำเร็จแล้ว รอเซิร์ฟเวอร์ Azure ประมวลผลตาราง...")
-                page.wait_for_load_state("networkidle")
-                time.sleep(5)
-            else:
-                print("ไม่พบ selector ปุ่มค้นหาโดยตรง ใช้การคลิกสำรอง...")
-                page.evaluate("""() => {
-                    const b = document.getElementById('MainContentPlaceHolder_searchLinkButton');
-                    if (b) b.click();
-                }""")
-                page.wait_for_load_state("networkidle")
-                time.sleep(5)
+            # 2. กระตุ้น ASP.NET PostBack ตรงไปยัง Event ของปุ่มค้นหา
+            print("กำลังส่งสัญญาณ ASP.NET PostBack เพื่อค้นหา...")
+            postback_result = page.evaluate("""() => {
+                // ตรวจสอบ Event Target ของปุ่ม searchLinkButton
+                const linkBtn = document.getElementById('MainContentPlaceHolder_searchLinkButton');
+                if (linkBtn) {
+                    const href = linkBtn.getAttribute('href');
+                    // กรณี href มีคำสั่ง javascript:__doPostBack
+                    if (href && href.includes('__doPostBack')) {
+                        eval(href.replace('javascript:', ''));
+                        return 'Executed href __doPostBack';
+                    }
+                    linkBtn.click();
+                    return 'Executed linkBtn.click()';
+                }
+                
+                // สั่งผ่านฟังก์ชันสากลของ ASP.NET
+                if (typeof __doPostBack === 'function') {
+                    __doPostBack('ctl00$MainContentPlaceHolder$searchLinkButton', '');
+                    return 'Called __doPostBack manually';
+                }
+                
+                return 'No ASP.NET PostBack handler found';
+            }""")
+            print(f"สถานะการส่งคำสั่งค้นหา: {postback_result}")
 
-            # 3. สแกนตารางห้อง
+            # 3. กำหนดเวลารอตารางเรนเดอร์อย่างแน่นอน (ASP.NET DataBind ใช้เวลา 5-7 วินาที)
+            print("กำลังรอการเรนเดอร์ตารางผลลัพธ์...")
+            time.sleep(7)
+
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
                 "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
+            # ตรวจสอบแถวตารางทั้งหมด
             rows = page.locator("tr").all()
-            print(f"พบแถวตารางทั้งหมดในหน้า: {len(rows)} แถว")
+            print(f"พบแถว tr ทั้งหมด: {len(rows)} แถว")
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -152,7 +157,6 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                # กรองชื่อห้องเฉพาะ เช่น 9 ห้อง 905
                 if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
                     continue
 
@@ -174,7 +178,7 @@ def run_scraper():
             print(f"ดึงข้อมูลสำเร็จทั้งหมด {len(scraped_data['rooms'])} ห้อง")
 
         except Exception as e:
-            print(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+            print(f"เกิดข้อผิดพลาดในการทำงาน: {e}")
         finally:
             browser.close()
 
@@ -186,12 +190,12 @@ def run_scraper():
     except Exception as e:
         print(f"บันทึก data.js ไม่สำเร็จ: {e}")
 
-    # ส่งเข้า Google Sheets
+    # ส่งเข้า Google Sheets Webhook
     if GAS_WEBHOOK_URL and len(scraped_data["rooms"]) > 0:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
             res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=25)
-            print(f"สถานะ GAS: {res.status_code}")
+            print(f"สถานะ GAS Webhook: {res.status_code}")
         except Exception as e:
             print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
     else:
