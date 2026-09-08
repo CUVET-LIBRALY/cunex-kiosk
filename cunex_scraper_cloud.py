@@ -7,10 +7,10 @@ from playwright.sync_api import sync_playwright
 
 CUNEX_USER = os.environ.get("CUNEX_USER")
 CUNEX_PASS = os.environ.get("CUNEX_PASS")
-BUILDING_ID = os.environ.get("BUILDING_ID", "3")
 GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
 
-TARGET_URL = f"https://cunex.chula.ac.th/admin/booking/table?building_id={BUILDING_ID}"
+# ใช้ URL จริงของระบบ CU NEX Backoffice
+TARGET_URL = "https://cunexbackoffice.azurewebsites.net/SearchReservation.aspx"
 
 def parse_cell_status(cell):
     try:
@@ -33,7 +33,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # ตรวจสอบสีเทา / ปิดทำการ
+        # 1. ตรวจสอบสีเทา (ปิดทำการ)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -43,16 +43,20 @@ def parse_cell_status(cell):
                 nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
                 if len(nums) >= 3:
                     r, g, b = nums[0], nums[1], nums[2]
+                    # สีเทา: ค่า RGB ใกล้เคียงกัน และความสว่างอยู่ในช่วงเทา
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
+                    # สีแดง / ชมพู (จองแล้ว / ถูกใช้งาน)
                     if r > g + 40 and r > b:
                         return "busy"
+                    # สีเหลือง (สนใจ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
+                    # สีเขียว (ว่าง)
                     if g > r + 30 and g > b + 30:
                         return "free"
 
-        if "red" in combined or "#ff0000" in combined:
+        if "red" in combined or "#ff0000" in combined or "pink" in combined:
             return "busy"
         if "yellow" in combined or "#ffff00" in combined:
             return "pending"
@@ -84,13 +88,13 @@ def run_scraper():
         page = context.new_page()
 
         try:
-            print(f"กำลังเปิด: {TARGET_URL}")
+            print(f"กำลังเปิดระบบ CU NEX: {TARGET_URL}")
             page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
             time.sleep(3)
 
-            # ตรวจสอบการเข้าสู่ระบบ
+            # ตรวจสอบว่าต้องล็อกอินก่อนหรือไม่
             if "login" in page.url.lower() or page.locator("input[type='password']").count() > 0:
-                print(f"พบหน้าล็อกอิน URL: {page.url}")
+                print("พบหน้าเข้าสู่ระบบ กำลังกรอกรหัส...")
                 if page.locator("input[name*='user'], input[type='text'], input[type='email']").count() > 0:
                     page.locator("input[name*='user'], input[type='text'], input[type='email']").first.fill(CUNEX_USER or "")
                 if page.locator("input[type='password']").count() > 0:
@@ -99,16 +103,35 @@ def run_scraper():
                 submit_btn = page.locator("button[type='submit'], input[type='submit'], .btn-login, button:has-text('เข้าสู่ระบบ')")
                 if submit_btn.count() > 0:
                     submit_btn.first.click()
-                    print("กดปุ่ม Submit แล้ว รอ 5 วินาที...")
                     time.sleep(5)
-
-                page.screenshot(path="after_login.png")
+                
+                # กลับมายังหน้าค้นหาห้อง
                 page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
+                time.sleep(3)
+
+            # เลือกตึกอาคาร 60 ปี และกดค้นหา
+            print("กำลังเลือกตึกและกดปุ่มค้นหา...")
+            building_dropdown = page.locator("select").first
+            if building_dropdown.count() > 0:
+                # เลือกตัวเลือกที่มีคำว่า อาคาร 60 ปี หรือ สัตวแพทยศาสตร์
+                options = building_dropdown.locator("option").all()
+                for opt in options:
+                    txt = opt.inner_text()
+                    if "60 ปี" in txt or "สัตวแพทย์" in txt:
+                        val = opt.get_attribute("value")
+                        building_dropdown.select_option(val)
+                        print(f"เลือกตึก: {txt}")
+                        break
+            
+            # คลิกปุ่มค้นหา (ปุ่มสีชมพู)
+            search_btn = page.locator("input[value='ค้นหา'], button:has-text('ค้นหา')")
+            if search_btn.count() > 0:
+                search_btn.first.click()
+                print("คลิกปุ่มค้นหาเรียบร้อยแล้ว รอโหลดตาราง...")
                 time.sleep(4)
 
-            # ถ่ายภาพหน้าตารางปัจจุบัน
+            # ถ่ายภาพหน้าจอไว้ตรวจสอบ
             page.screenshot(path="table_page.png")
-            print(f"URL ปัจจุบันที่พร้อมดึงข้อมูล: {page.url}")
 
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
@@ -116,8 +139,9 @@ def run_scraper():
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
+            # สแกนตารางผลการค้นหาห้องเพื่อทำการจอง
             rows = page.locator("table tr").all()
-            print(f"จำนวนแถวในตารางที่สแกนเจอ: {len(rows)}")
+            print(f"พบแถวทั้งหมดในระบบ {len(rows)} แถว")
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -125,7 +149,8 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
+                # ตรวจสอบชื่อห้อง (เช่น 9 ห้อง 905)
+                if not any(char.isdigit() for char in room_name) or "ชั้น" in room_name and len(room_name) < 5:
                     continue
 
                 room_slots = {}
@@ -136,6 +161,9 @@ def run_scraper():
                         status = parse_cell_status(cell)
                         room_slots[slot_name] = status
 
+                if "905" in room_name:
+                    print(f"--> ผลสแกนห้อง 905 เวลา 18:00-19:00: {room_slots.get('18:00 - 19:00')}")
+
                 scraped_data["rooms"].append({
                     "room_name": room_name,
                     "floor": "9",
@@ -143,7 +171,7 @@ def run_scraper():
                     "slots": room_slots
                 })
 
-            print(f"ประมวลผลห้องประชุมได้: {len(scraped_data['rooms'])} ห้อง")
+            print(f"ดึงข้อมูลสำเร็จทั้งหมด {len(scraped_data['rooms'])} ห้อง")
 
         except Exception as e:
             print(f"เกิดข้อผิดพลาด: {e}")
@@ -162,14 +190,16 @@ def run_scraper():
     except Exception as e:
         print(f"บันทึก data.js ไม่สำเร็จ: {e}")
 
-    # 2. ส่งเข้า Google Apps Script
-    if GAS_WEBHOOK_URL:
+    # 2. ส่งข้อมูลเข้า Google Sheets
+    if GAS_WEBHOOK_URL and len(scraped_data["rooms"]) > 0:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
             res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=20)
             print(f"สถานะ GAS: {res.status_code}")
         except Exception as e:
             print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
+    else:
+        print("ข้ามการส่งข้อมูลเข้า Google Sheets (ไม่มีข้อมูลห้อง)")
 
 if __name__ == "__main__":
     run_scraper()
