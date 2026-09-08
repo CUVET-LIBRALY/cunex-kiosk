@@ -12,87 +12,54 @@ CUNEX_PASS = os.environ.get("CUNEX_PASS")
 BUILDING_ID = os.environ.get("BUILDING_ID", "3")
 GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
 
+LOGIN_URL = "https://cunex.chula.ac.th/admin/login"
 TARGET_URL = f"https://cunex.chula.ac.th/admin/booking/table?building_id={BUILDING_ID}"
 
 def parse_cell_status(cell):
     """
-    ฟังก์ชันตรวจสอบสถานะจาก Cell (td) โดยตรง
-    อ่านค่าสีที่แท้จริงจาก Browser Rendered Style ทั้ง td และ element ภายใน
+    ตรวจสอบสถานะของช่องตาราง (Cell)
+    รองรับ: สีเทา/ปิดทำการ (closed), แดง/ชมพู (busy), เหลือง (pending), เขียว (free)
     """
     try:
-        # อ่านค่าสีพื้นหลังที่แท้จริงที่แสดงผลบนหน้าจอ
-        colors = cell.evaluate("""
-            el => {
-                const getEffectiveBg = (target) => {
-                    let cur = target;
-                    while (cur && cur !== document.body) {
-                        const style = window.getComputedStyle(cur);
-                        const bg = style.backgroundColor;
-                        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
-                            return bg;
-                        }
-                        const attrBg = cur.getAttribute('bgcolor');
-                        if (attrBg) return attrBg;
-                        cur = cur.parentElement;
-                    }
-                    return '';
-                };
+        # อ่านค่าสีและ attribute ทั้งหมดแบบปลอดภัย
+        style_attr = (cell.get_attribute("style") or "").lower()
+        class_attr = (cell.get_attribute("class") or "").lower()
+        bgcolor_attr = (cell.get_attribute("bgcolor") or "").lower()
 
-                const tdBg = window.getComputedStyle(el).backgroundColor;
-                const pBg = el.querySelector('p') ? window.getComputedStyle(el.querySelector('p')).backgroundColor : '';
-                const effBg = getEffectiveBg(el);
-                const classStr = el.className + ' ' + (el.querySelector('p') ? el.querySelector('p').className : '');
-                const styleStr = (el.getAttribute('style') || '') + ' ' + (el.getAttribute('bgcolor') || '');
+        # อ่าน computed background-color ผ่าน script สั้นๆ ปลอดภัย
+        bg_color = cell.evaluate("el => window.getComputedStyle(el).backgroundColor || ''").lower()
 
-                return {
-                    tdBg: tdBg || '',
-                    pBg: pBg || '',
-                    effBg: effBg || '',
-                    classStr: classStr.toLowerCase(),
-                    styleStr: styleStr.toLowerCase()
-                };
-            }
-        """)
+        combined_info = f"{style_attr} {class_attr} {bgcolor_attr} {bg_color}"
 
-        combined_text = f"{colors['tdBg']} {colors['pBg']} {colors['effBg']} {colors['classStr']} {colors['styleStr']}".lower()
-
-        # 1. ตรวจสอบเงื่อนไขสีเทา (ปิดทำการ)
+        # 1. ตรวจสอบสีเทา / ปิดทำการ
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "#888", "#999", "#aaa", "#4a4a4a", "#343a40", "disabled", "closed", "lock"]
-        if any(k in combined_text for k in gray_keywords):
+        if any(k in combined_info for k in gray_keywords):
             return "closed"
 
-        # ตรวจสอบค่า RGB ทุกตัวที่ดึงมาได้
-        for bg in [colors['tdBg'], colors['pBg'], colors['effBg']]:
-            if "rgb" in bg:
-                nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
-                if len(nums) >= 3:
-                    r, g, b = nums[0], nums[1], nums[2]
-                    # สีเทา: R, G, B ค่าใกล้เคียงกันมาก (ความต่างไม่เกิน 25) และไม่ใช่สีขาวสว่าง
-                    if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
-                        return "closed"
-                    
-                    # สีแดง / ชมพู (จองแล้ว)
-                    if r > g + 40 and r > b:
-                        return "busy"
+        # ตรวจสอบค่า RGB ของสีเทา (ค่า R, G, B ใกล้เคียงกัน และไม่ใช่สีขาว/ดำ)
+        if "rgb" in bg_color:
+            nums = [int(n.strip()) for n in bg_color.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
+            if len(nums) >= 3:
+                r, g, b = nums[0], nums[1], nums[2]
+                if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
+                    return "closed"
+                if r > g + 40 and r > b:
+                    return "busy"
+                if r > 160 and g > 160 and b < 100:
+                    return "pending"
+                if g > r + 30 and g > b + 30:
+                    return "free"
 
-                    # สีเหลือง (สนใจ/รออนุมัติ)
-                    if r > 160 and g > 160 and b < 100:
-                        return "pending"
-
-                    # สีเขียว (ว่าง)
-                    if g > r + 30 and g > b + 30:
-                        return "free"
-
-        # ตรวจสอบจากชื่อสีพื้นฐาน
-        if any(c in combined_text for c in ["red", "#ff0000", "#dc3545"]):
+        # 2. ตรวจสอบคำระบุสีทั่วไป
+        if any(c in combined_info for c in ["red", "#ff0000", "#dc3545", "ชมพู"]):
             return "busy"
-        if any(c in combined_text for c in ["yellow", "#ffff00", "#ffc107"]):
+        if any(c in combined_info for c in ["yellow", "#ffff00", "#ffc107"]):
             return "pending"
-        if any(c in combined_text for c in ["green", "#008000", "#28a745", "#22c55e"]):
+        if any(c in combined_info for c in ["green", "#008000", "#28a745", "#22c55e"]):
             return "free"
 
     except Exception as e:
-        print(f"Error checking cell: {e}")
+        print(f"Cell check error: {e}")
 
     return "free"
 
@@ -119,7 +86,7 @@ def run_scraper():
 
             # ตรวจสอบการเข้าสู่ระบบ
             if "login" in page.url.lower() or page.locator("input[type='password']").count() > 0:
-                print("พบหน้าเข้าสู่ระบบ กำลังล็อกอิน...")
+                print("กำลังเข้าสู่ระบบ...")
                 if page.locator("input[name*='user'], input[type='text'], input[type='email']").count() > 0:
                     page.locator("input[name*='user'], input[type='text'], input[type='email']").first.fill(CUNEX_USER)
                 if page.locator("input[type='password']").count() > 0:
@@ -134,21 +101,19 @@ def run_scraper():
                 page.goto(TARGET_URL, timeout=45000)
                 page.wait_for_load_state("networkidle")
 
-            print("กำลังค้นหาตาราง...")
+            print("กำลังค้นหาตารางการจอง...")
             page.wait_for_selector("table", timeout=20000)
             time.sleep(2)
 
-            # กำหนดช่วงเวลามาตรฐาน
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
                 "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            # อ่านแถวห้องประชุม (มองหา tr ที่มี id MainContentPlaceHolder)
-            rows = page.locator("table tr[id*='MainContentPlaceHolder']").all()
-            if not rows:
-                rows = page.locator("table tr").all()[1:]
+            # ค้นหาแถวของห้องประชุม
+            rows = page.locator("table tr").all()
+            print(f"พบแถวทั้งหมดในตาราง {len(rows)} แถว")
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -156,11 +121,11 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
+                # กรองเอาเฉพาะแถวที่มีตัวเลขห้อง เช่น 905, 907
                 if not any(char.isdigit() for char in room_name):
                     continue
 
                 room_slots = {}
-                # เริ่มอ่าน cell ที่ 1 เป็นต้นไป (cell 0 คือชื่อห้อง)
                 for idx, slot_name in enumerate(time_slots):
                     cell_idx = idx + 1
                     if cell_idx < len(cells):
@@ -175,29 +140,29 @@ def run_scraper():
                     "slots": room_slots
                 })
 
-            print(f"ดึงข้อมูลเรียบร้อยทั้งหมด {len(scraped_data['rooms'])} ห้อง")
+            print(f"ประมวลผลข้อมูลห้องสำเร็จทั้งหมด {len(scraped_data['rooms'])} ห้อง")
 
         except Exception as e:
-            print(f"เกิดข้อผิดพลาดขณะ Scrape: {e}")
+            print(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
         finally:
             browser.close()
 
-    # บันทึก data.js สำหรับ Fast Cache
+    # 1. บันทึกลง data.js
     try:
         with open("data.js", "w", encoding="utf-8") as f:
             f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
         print("บันทึกข้อมูลลง data.js สำเร็จ")
     except Exception as e:
-        print(f"บันทึก data.js ล้มเหลว: {e}")
+        print(f"บันทึกลง data.js ล้มเหลว: {e}")
 
-    # ส่งเข้า Google Apps Script
+    # 2. ส่งเข้า Google Apps Script
     if GAS_WEBHOOK_URL:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
             res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=20)
-            print(f"สถานะส่งข้อมูล GAS: {res.status_code} - {res.text}")
+            print(f"ผลลัพธ์จาก GAS: {res.status_code} - {res.text}")
         except Exception as e:
-            print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
+            print(f"ส่งข้อมูลไป GAS ล้มเหลว: {e}")
 
 if __name__ == "__main__":
     run_scraper()
