@@ -204,6 +204,8 @@
     .slot-cell {
       transition: all 0.2s ease;
       cursor: default;
+      font-size: 1.15rem;
+      user-select: none;
     }
 
     .slot-cell.free {
@@ -222,16 +224,13 @@
     }
     .slot-cell.pending::after {
       content: "⏳";
-      font-size: 1rem;
+      font-size: 1.05rem;
     }
 
+    /* แสดงไอคอนสัตว์สำหรับช่อง busy */
     .slot-cell.busy {
       background-color: var(--status-busy);
       color: #be123c;
-    }
-    .slot-cell.busy::after {
-      content: "👤";
-      font-size: 1rem;
     }
 
     .slot-cell.closed {
@@ -297,7 +296,7 @@
       </div>
       <div class="legend-item">
         <span class="legend-badge busy"></span>
-        <span id="lblBusy">ไม่ว่าง / ถูกจอง</span>
+        <span id="lblBusy">ไม่ว่าง / มีผู้ใช้งาน 🐾</span>
       </div>
       <div class="legend-item">
         <span class="legend-badge closed"></span>
@@ -366,7 +365,7 @@
     setInterval(updateClock, 1000);
     updateClock();
 
-    // รายการเวลามาตรฐาน 08:00 - 19:00 น. (ตัดช่วง 19:00 - 20:00 ออก)
+    // รายการเวลามาตรฐาน 08:00 - 19:00 น. (ตัด 19:00 - 20:00 ออก)[cite: 1, 2]
     const defaultTimeSlots = [
       "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
       "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
@@ -386,6 +385,17 @@
       { id: "931", name: "ห้อง 931", floor: "9", building: "อาคาร 60 ปี" },
       { id: "932", name: "ห้อง 932", floor: "9", building: "อาคาร 60 ปี" }
     ];
+
+    // ไอคอนเงาสัตว์สำหรับคณะสัตวแพทย์
+    const VET_ANIMAL_ICONS = ["🐕", "🐈", "🐎", "🐇", "🐾", "🦔", "🦜"];
+    function getRandomAnimalIcon(seedStr) {
+      let hash = 0;
+      for (let i = 0; i < seedStr.length; i++) {
+        hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const index = Math.abs(hash) % VET_ANIMAL_ICONS.length;
+      return VET_ANIMAL_ICONS[index];
+    }
 
     function renderTableHeader(slots) {
       const headerRow = document.getElementById('headerRow');
@@ -423,6 +433,12 @@
             }
           }
           tdSlot.classList.add(status);
+
+          // ถ้าสถานะเป็น busy (ไม่ว่าง/ถูกจอง) ให้สุ่มแสดงไอคอนสัตว์
+          if (status === 'busy') {
+            tdSlot.textContent = getRandomAnimalIcon(room.room_name + slot);
+          }
+
           tr.appendChild(tdSlot);
         });
 
@@ -439,7 +455,6 @@
       if (scrapedRooms.length > 0 && scrapedRooms[0].slots) {
         const keys = Object.keys(scrapedRooms[0].slots);
         if (keys.length > 0) {
-          // กรองตัดช่วงเวลา 19:00 เป็นต้นไปออก
           activeSlots = keys.filter(slot => !slot.includes("19:00 - 20:00") && !slot.startsWith("19:") && !slot.startsWith("20:"));
         }
       }
@@ -448,10 +463,9 @@
       const finalRooms = ALL_REQUIRED_ROOMS.map(reqRoom => {
         const found = scrapedRooms.find(r => r.room_name && r.room_name.includes(reqRoom.id));
         if (found) {
-          // หากห้องเปิดใช้งาน (Active) ใน CU NEX แสดงสถานะจริง
           return found;
         } else {
-          // หากห้องปิดปรับปรุง (Inactive ใน CU NEX) จะขึ้นแสดงว่า (ปรับปรุง) และใส่สถานะปิดบริการ (closed) อัตโนมัติ
+          // หากห้องถูกปิด Inactive ใน CU NEX ให้ขึ้นว่า (ปรับปรุง) และใส่สถานะปิดบริการ
           const closedSlots = {};
           activeSlots.forEach(s => closedSlots[s] = 'closed');
           return {
@@ -469,7 +483,7 @@
       syncStatus.textContent = `เชื่อมต่อปกติผ่าน ${sourceLabel} (ดึงข้อมูลอัตโนมัติทุก 15 นาที)`;
     }
 
-    // แคชในเครื่องเบราว์เซอร์ เพื่อให้เปิดหน้าเว็บแล้วตารางขึ้นทันทีใน 0 วินาที
+    // แคชในเครื่อง เพื่อให้เปิดหน้าเว็บแล้วขึ้นทันทีใน 0 วินาที
     const CACHE_KEY = "CUNEX_ROOMS_CACHE";
 
     function loadFromLocalCache() {
@@ -493,7 +507,7 @@
       const syncStatus = document.getElementById('syncStatus');
       const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzjnkoN0q3jQPkQTMnxmpbn1Tthlg4vSBBY6U68EX60kBHwpl_fHv_6DYMcqAdJ00g7/exec";
 
-      // 1. นำข้อมูลที่จำไว้มาแสดงผลทันที ไม่ต้องรอโหลด
+      // 1. นำข้อมูลในเครื่องมาแสดงผลทันทีก่อน
       const hasCache = loadFromLocalCache();
       if (!hasCache) {
         if (window.CUNEX_DATA && window.CUNEX_DATA.rooms && window.CUNEX_DATA.rooms.length > 0) {
@@ -501,7 +515,7 @@
         }
       }
 
-      // 2. ดึงข้อมูลสดจาก Cloud เบื้องหลัง
+      // 2. แอบดึงข้อมูลสดจาก Cloud มาอัปเดตเบื้องหลัง
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 12000);
@@ -521,7 +535,7 @@
           }
         }
       } catch (err) {
-        console.warn("Cloud ตอบสนองช้า กำลังแสดงผลจากข้อมูลที่มีอยู่ล่าสุด:", err);
+        console.warn("Cloud ตอบสนองช้า กำลังแสดงผลจากข้อมูลล่าสุด:", err);
       }
 
       if (!hasCache && (!window.CUNEX_DATA || !window.CUNEX_DATA.rooms)) {
@@ -532,7 +546,7 @@
     renderTableHeader(defaultTimeSlots);
     refreshBookingData();
 
-    // รีเฟรชตรวจเช็กข้อมูลใหม่ทุก 60 วินาที
+    // ตรวจสอบข้อมูลใหม่ทุก 60 วินาที[cite: 1, 2]
     setInterval(refreshBookingData, 60000);
   </script>
 </body>
