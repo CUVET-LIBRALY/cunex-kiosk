@@ -7,7 +7,6 @@ from playwright.sync_api import sync_playwright
 
 CUNEX_USER = os.environ.get("CUNEX_USER")
 CUNEX_PASS = os.environ.get("CUNEX_PASS")
-BUILDING_ID = os.environ.get("BUILDING_ID")
 GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
 
 LOGIN_URL = "https://cunexbackoffice.azurewebsites.net/Login.aspx"
@@ -34,7 +33,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # ตรวจสอบสถานะปิดบริการ (สีเทา)
+        # เช็คสีเทา (ปิดทำการ)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -44,16 +43,16 @@ def parse_cell_status(cell):
                 nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
                 if len(nums) >= 3:
                     r, g, b = nums[0], nums[1], nums[2]
-                    # สีเทา
+                    # เทา
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
-                    # สีแดง / ชมพู (จองแล้ว / ใช้งาน)
+                    # แดง / ชมพู (จองแล้ว)
                     if r > g + 40 and r > b:
                         return "busy"
-                    # สีเหลือง (สนใจ / รอนุมัติ)
+                    # เหลือง (สนใจ/รอนุมัติ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
-                    # สีเขียว (ว่าง)
+                    # เขียว (ว่าง)
                     if g > r + 30 and g > b + 30:
                         return "free"
 
@@ -68,6 +67,7 @@ def parse_cell_status(cell):
         pass
 
     return "free"
+
 
 def run_scraper():
     tz_th = timezone(timedelta(hours=7))
@@ -89,10 +89,10 @@ def run_scraper():
 
         try:
             print(f"กำลังเปิดเข้าระบบ CU NEX: {LOGIN_URL}")
-            page.goto(LOGIN_URL, timeout=45000, wait_until="networkidle")
+            page.goto(LOGIN_URL, timeout=45000, wait_until="domcontentloaded")
             time.sleep(2)
 
-            # ขั้นตอนการเข้าสู่ระบบ
+            # ตรวจสอบการเข้าสู่ระบบ
             if page.locator("input[type='password']").count() > 0:
                 print("พบหน้าเข้าสู่ระบบ กำลังกรอกรหัส...")
                 user_input = page.locator("input[type='text'], input[name*='User'], input[name*='user'], input[id*='User']").first
@@ -104,109 +104,74 @@ def run_scraper():
                 login_btn = page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ'], input[value*='Login']").first
                 login_btn.click()
                 print("คลิกปุ่มเข้าสู่ระบบแล้ว กำลังรอการยืนยันตัวตน...")
-                page.wait_for_load_state("networkidle")
                 time.sleep(4)
 
             # ตรงไปที่หน้าค้นหาห้อง
             print(f"กำลังเปิดหน้าค้นหาห้อง: {TARGET_URL}")
-            page.goto(TARGET_URL, timeout=45000, wait_until="networkidle")
-            time.sleep(4)
+            page.goto(TARGET_URL, timeout=45000, wait_until="domcontentloaded")
+            time.sleep(3)
             print(f"อยู่ที่หน้า: {page.url}")
 
-            # ตรวจสอบและเลือก Dropdown ทั้งหมดที่มีในหน้า
-            print("กำลังวิเคราะห์ Dropdown ในหน้า...")
-            page.wait_for_selector("select", timeout=15000)
+            # 1. เลือกตึกผ่าน Dropdown MainContentPlaceHolder_ddlBuilding
+            print("กำลังเลือกตึก อาคาร 60 ปี...")
+            building_selector = "#MainContentPlaceHolder_ddlBuilding, select[name*='ddlBuilding']"
+            page.wait_for_selector(building_selector, timeout=15000)
             
-            # รอดูตัวเลือกใน Dropdown นานขึ้น เผื่อโหลด AJAX
-            time.sleep(3)
-            
-            # ให้ JavaScript ตรวจหาตัวเลือกทั้งหมดและเลือกตึก
-            eval_result = page.evaluate("""() => {
-                const selects = Array.from(document.querySelectorAll('select'));
-                const summary = [];
-                let selectedBuilding = false;
-                let selectedText = '';
-
-                selects.forEach((sel, selIdx) => {
-                    const opts = Array.from(sel.options).map(o => ({ value: o.value, text: (o.text || o.innerText || '').trim() }));
-                    summary.push({ selectId: sel.id || sel.name || `select_${selIdx}`, options: opts });
-
-                    // ลองค้นหาตัวเลือกตึก
-                    opts.forEach(opt => {
-                        const t = opt.text;
-                        if (t.includes('60 ปี') || t.includes('สัตวแพทย์') || t.includes('60th') || t.includes('๖๐ ปี')) {
-                            sel.value = opt.value;
-                            sel.dispatchEvent(new Event('change', { bubbles: true }));
-                            selectedBuilding = true;
-                            selectedText = t;
-                        }
-                    });
-                });
-
-                return { summary, selectedBuilding, selectedText };
-            }""")
-
-            print(f"พบ Dropdown ทั้งหมด {len(eval_result.get('summary', []))} ตัว:")
-            for item in eval_result.get("summary", []):
-                opt_texts = [o["text"] for o in item["options"]]
-                print(f" - [{item['selectId']}]: มี {len(opt_texts)} ตัวเลือก ตัวอย่าง: {opt_texts[:5]}")
-
-            if eval_result.get("selectedBuilding"):
-                print(f"เลือกตึกสำเร็จ: {eval_result.get('selectedText')}")
-                page.wait_for_load_state("networkidle")
-                time.sleep(3)
-            else:
-                print("ยังไม่พบคำว่า 60 ปี ในตัวเลือก กำลังลองใช้ค่า BUILDING_ID หรือตัวเลือกที่มี...")
-                if BUILDING_ID:
-                    page.evaluate(f"""(bid) => {{
-                        const selects = Array.from(document.querySelectorAll('select'));
-                        for (let sel of selects) {{
-                            for (let opt of Array.from(sel.options)) {{
-                                if (opt.value === bid || opt.text.includes(bid)) {{
-                                    sel.value = opt.value;
-                                    sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                                }}
-                            }}
-                        }}
-                    }}""", BUILDING_ID)
-                    time.sleep(2)
-
-            # ค้นหาและคลิกปุ่มค้นหา
-            print("กำลังคลิกปุ่มค้นหา...")
-            search_success = page.evaluate("""() => {
-                // ค้นหาปุ่มค้นหาตาม Attribute
-                const candidates = Array.from(document.querySelectorAll('input[type="submit"], input[type="button"], button'));
-                for (let btn of candidates) {
-                    const val = (btn.value || btn.innerText || btn.id || btn.name || '').toLowerCase();
-                    if (val.includes('ค้นหา') || val.includes('search') || val.includes('btnsearch')) {
-                        btn.click();
-                        return { clicked: true, info: btn.outerHTML.substring(0, 100) };
+            # ดึง value ของตึก 60 ปี
+            target_val = page.evaluate("""() => {
+                const sel = document.querySelector('#MainContentPlaceHolder_ddlBuilding') || document.querySelector("select[name*='ddlBuilding']");
+                if (!sel) return null;
+                for (let opt of sel.options) {
+                    if (opt.text.includes('60 ปี') || opt.text.includes('สัตวแพทย์')) {
+                        return { value: opt.value, text: opt.text };
                     }
                 }
-                // ถ้าไม่พบ ให้ลองคลิกปุ่ม submit ตัวแรก
-                if (candidates.length > 0) {
-                    candidates[0].click();
-                    return { clicked: true, info: 'first_candidate' };
-                }
-                return { clicked: false };
+                return null;
             }""")
 
-            if search_success.get("clicked"):
-                print(f"คลิกปุ่มค้นหาสำเร็จ ({search_success.get('info')}) รอโหลดข้อมูลตาราง 6 วินาที...")
-                page.wait_for_load_state("networkidle")
-                time.sleep(6)
-            else:
-                print("ไม่พบปุ่มค้นหา กำลังตรวจแถวข้อมูล...")
+            if target_val:
+                print(f"เลือกตึกสำเร็จ: {target_val['text']} (Value: {target_val['value']})")
+                page.select_option(building_selector, value=target_val['value'])
+                # ใน WebForms เมื่อเลือก dropdown บางทีจะ trigger PostBack อัตโนมัติ รอ 3 วินาที
                 time.sleep(3)
 
-            # อ่านช่วงเวลาทั้ง 11 สล็อต
+            # 2. ค้นหาปุ่มค้นหาในหน้า
+            print("กำลังค้นหาและกดปุ่มค้นหา...")
+            search_clicked = page.evaluate("""() => {
+                // 1. หาปุ่มที่มีคำว่า ค้นหา หรือ Search
+                const inputs = Array.from(document.querySelectorAll('input[type="submit"], button, input[type="button"], a.btn'));
+                for (let el of inputs) {
+                    const txt = (el.value || el.innerText || el.id || el.name || '').toLowerCase();
+                    if (txt.includes('ค้นหา') || txt.includes('search') || el.id.includes('btnSearch') || el.name.includes('btnSearch')) {
+                        el.click();
+                        return 'clicked: ' + (el.id || el.value || el.innerText);
+                    }
+                }
+                
+                // 2. ถ้าหาไม่เจอ ให้ลอง submit ฟอร์มหลัก
+                const form = document.forms[0];
+                if (form) {
+                    if (typeof __doPostBack === 'function') {
+                        __doPostBack('ctl00$MainContentPlaceHolder$btnSearch', '');
+                        return 'invoked __doPostBack';
+                    }
+                    form.submit();
+                    return 'form submitted';
+                }
+                return 'not found';
+            }""")
+
+            print(f"ผลการกดปุ่มค้นหา: {search_clicked}")
+            # รอให้ผลลัพธ์ตารางโหลด
+            time.sleep(5)
+
+            # 3. สแกนตารางห้องและช่วงเวลา
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
                 "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            # รอแถวตาราง
             rows = page.locator("tr").all()
             print(f"พบแถวตารางทั้งหมดในหน้า: {len(rows)} แถว")
 
@@ -216,6 +181,7 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
+                # กรองเฉพาะชื่อห้อง เช่น 9 ห้อง 905
                 if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
                     continue
 
@@ -241,7 +207,7 @@ def run_scraper():
         finally:
             browser.close()
 
-    # 1. เขียน data.js
+    # 1. เขียน data.js สำรอง
     try:
         with open("data.js", "w", encoding="utf-8") as f:
             f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
