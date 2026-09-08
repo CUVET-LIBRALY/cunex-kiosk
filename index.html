@@ -366,11 +366,25 @@
     setInterval(updateClock, 1000);
     updateClock();
 
-    // กำหนดเวลาเริ่มต้น 08:00 - 19:00 น. (ตัด 19:00 - 20:00 ออกเรียบร้อย)
+    // รายการเวลามาตรฐาน 08:00 - 19:00 น. (ตัดช่วง 19:00 - 20:00 ออก)
     const defaultTimeSlots = [
       "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
       "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
       "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
+    ];
+
+    // รายชื่อห้องประชุมมาตรฐานทั้งหมด 10 ห้อง ของอาคาร 60 ปี
+    const ALL_REQUIRED_ROOMS = [
+      { id: "905", name: "ห้อง 905", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "906", name: "ห้อง 906", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "907", name: "ห้อง 907", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "908", name: "ห้อง 908", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "927", name: "ห้อง 927", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "928", name: "ห้อง 928", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "929", name: "ห้อง 929", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "930", name: "ห้อง 930", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "931", name: "ห้อง 931", floor: "9", building: "อาคาร 60 ปี" },
+      { id: "932", name: "ห้อง 932", floor: "9", building: "อาคาร 60 ปี" }
     ];
 
     function renderTableHeader(slots) {
@@ -419,24 +433,43 @@
     function applyData(data, sourceLabel = "ระบบ Cloud (Google Sheets)") {
       const syncStatus = document.getElementById('syncStatus');
       const lastUpdated = document.getElementById('lastUpdated');
-      const rooms = data.rooms || [];
+      const scrapedRooms = data.rooms || [];
       
       let activeSlots = defaultTimeSlots;
-      if (rooms.length > 0 && rooms[0].slots) {
-        const keys = Object.keys(rooms[0].slots);
+      if (scrapedRooms.length > 0 && scrapedRooms[0].slots) {
+        const keys = Object.keys(scrapedRooms[0].slots);
         if (keys.length > 0) {
-          // กรองตัดช่วงเวลา 19:00 เป็นต้นไปออกอัตโนมัติ
+          // กรองตัดช่วงเวลา 19:00 เป็นต้นไปออก
           activeSlots = keys.filter(slot => !slot.includes("19:00 - 20:00") && !slot.startsWith("19:") && !slot.startsWith("20:"));
         }
       }
 
+      // ตรวจสอบและแมปข้อมูลห้องให้ครบทั้ง 10 ห้องเสมอ
+      const finalRooms = ALL_REQUIRED_ROOMS.map(reqRoom => {
+        const found = scrapedRooms.find(r => r.room_name && r.room_name.includes(reqRoom.id));
+        if (found) {
+          // หากห้องเปิดใช้งาน (Active) ใน CU NEX แสดงสถานะจริง
+          return found;
+        } else {
+          // หากห้องปิดปรับปรุง (Inactive ใน CU NEX) จะขึ้นแสดงว่า (ปรับปรุง) และใส่สถานะปิดบริการ (closed) อัตโนมัติ
+          const closedSlots = {};
+          activeSlots.forEach(s => closedSlots[s] = 'closed');
+          return {
+            room_name: reqRoom.name + " (ปรับปรุง)",
+            floor: reqRoom.floor,
+            building: reqRoom.building,
+            slots: closedSlots
+          };
+        }
+      });
+
       renderTableHeader(activeSlots);
-      renderTableData(rooms, activeSlots);
+      renderTableData(finalRooms, activeSlots);
       lastUpdated.textContent = data.updated_at || new Date().toLocaleTimeString('th-TH');
       syncStatus.textContent = `เชื่อมต่อปกติผ่าน ${sourceLabel}`;
     }
 
-    // ฟังก์ชันหน่วยความจำในเครื่อง เพื่อให้เปิดหน้าเว็บแล้วขึ้นทันทีใน 0 วินาที
+    // แคชในเครื่องเบราว์เซอร์ เพื่อให้เปิดหน้าเว็บแล้วตารางขึ้นทันทีใน 0 วินาที
     const CACHE_KEY = "CUNEX_ROOMS_CACHE";
 
     function loadFromLocalCache() {
@@ -455,12 +488,12 @@
       return false;
     }
 
-    // 3. ดึงข้อมูลแบบ Fast-Cache + Background Sync
+    // ดึงข้อมูลแบบ Fast-Cache + Background Sync
     async function refreshBookingData() {
       const syncStatus = document.getElementById('syncStatus');
       const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzjnkoN0q3jQPkQTMnxmpbn1Tthlg4vSBBY6U68EX60kBHwpl_fHv_6DYMcqAdJ00g7/exec";
 
-      // 3.1 อ่านข้อมูลเดิมที่จำไว้มาวาดตารางทันทีก่อน ไม่ต้องรอเน็ต
+      // 1. นำข้อมูลที่จำไว้มาแสดงผลทันที ไม่ต้องรอโหลด
       const hasCache = loadFromLocalCache();
       if (!hasCache) {
         if (window.CUNEX_DATA && window.CUNEX_DATA.rooms && window.CUNEX_DATA.rooms.length > 0) {
@@ -468,10 +501,10 @@
         }
       }
 
-      // 3.2 ดึงข้อมูลสดจาก Cloud มาเทียบอยู่เบื้องหลัง
+      // 2. ดึงข้อมูลสดจาก Cloud เบื้องหลัง
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000); // หาก Google หมุนนานเกิน 12 วินาทีให้ตัด
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
 
         const res = await fetch(GAS_API_URL + "?t=" + Date.now(), { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -479,7 +512,6 @@
         if (res.ok) {
           const data = await res.json();
           if (data && data.rooms && data.rooms.length > 0) {
-            // บันทึกเวอร์ชันล่าสุดลงเครื่อง
             try {
               localStorage.setItem(CACHE_KEY, JSON.stringify(data));
             } catch (e) {}
@@ -499,8 +531,8 @@
 
     renderTableHeader(defaultTimeSlots);
     refreshBookingData();
-    
-    // ตั้งเวลารีเฟรชตรวจเช็กข้อมูลใหม่ทุกๆ 60 วินาที
+
+    // รีเฟรชตรวจเช็กข้อมูลใหม่ทุก 60 วินาที
     setInterval(refreshBookingData, 60000);
   </script>
 </body>
