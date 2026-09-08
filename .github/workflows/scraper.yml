@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: ตรวจสอบที่เก็บข้อมูล (Checkout)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: ติดตั้ง Python
         uses: actions/setup-python@v5
@@ -42,4 +44,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data.js
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update data.js [skip ci]" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update data.js [skip ci]" && git pull --rebase origin main && git push origin main)
