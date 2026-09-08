@@ -33,7 +33,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # เช็คสีเทา (ปิดทำการ)
+        # ตรวจสอบสีเทา (ปิดทำการ)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -43,16 +43,16 @@ def parse_cell_status(cell):
                 nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
                 if len(nums) >= 3:
                     r, g, b = nums[0], nums[1], nums[2]
-                    # เทา
+                    # สีเทา
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
-                    # แดง / ชมพู (จองแล้ว)
+                    # สีแดง / ชมพู (จองแล้ว)
                     if r > g + 40 and r > b:
                         return "busy"
-                    # เหลือง (สนใจ/รอนุมัติ)
+                    # สีเหลือง (สนใจ/รอนุมัติ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
-                    # เขียว (ว่าง)
+                    # สีเขียว (ว่าง)
                     if g > r + 30 and g > b + 30:
                         return "free"
 
@@ -103,69 +103,40 @@ def run_scraper():
                 
                 login_btn = page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ'], input[value*='Login']").first
                 login_btn.click()
-                print("คลิกปุ่มเข้าสู่ระบบแล้ว กำลังรอการยืนยันตัวตน...")
+                print("คลิกปุ่มเข้าสู่ระบบแล้ว กำลังรอเซสชัน...")
                 time.sleep(4)
 
-            # ตรงไปที่หน้าค้นหาห้อง
+            # เปิดไปยังหน้าค้นหาห้อง
             print(f"กำลังเปิดหน้าค้นหาห้อง: {TARGET_URL}")
             page.goto(TARGET_URL, timeout=45000, wait_until="domcontentloaded")
             time.sleep(3)
-            print(f"อยู่ที่หน้า: {page.url}")
 
-            # 1. เลือกตึกผ่าน Dropdown MainContentPlaceHolder_ddlBuilding
+            # 1. เลือกตึกผ่าน Dropdown
             print("กำลังเลือกตึก อาคาร 60 ปี...")
-            building_selector = "#MainContentPlaceHolder_ddlBuilding, select[name*='ddlBuilding']"
+            building_selector = "#MainContentPlaceHolder_ddlBuilding"
             page.wait_for_selector(building_selector, timeout=15000)
-            
-            # ดึง value ของตึก 60 ปี
-            target_val = page.evaluate("""() => {
-                const sel = document.querySelector('#MainContentPlaceHolder_ddlBuilding') || document.querySelector("select[name*='ddlBuilding']");
-                if (!sel) return null;
-                for (let opt of sel.options) {
-                    if (opt.text.includes('60 ปี') || opt.text.includes('สัตวแพทย์')) {
-                        return { value: opt.value, text: opt.text };
-                    }
-                }
-                return null;
-            }""")
+            page.select_option(building_selector, value="3")
+            print("เลือกตึกค่า 3 เรียบร้อย รอการตอบสนอง 2 วินาที...")
+            time.sleep(2)
 
-            if target_val:
-                print(f"เลือกตึกสำเร็จ: {target_val['text']} (Value: {target_val['value']})")
-                page.select_option(building_selector, value=target_val['value'])
-                # ใน WebForms เมื่อเลือก dropdown บางทีจะ trigger PostBack อัตโนมัติ รอ 3 วินาที
-                time.sleep(3)
+            # 2. คลิกปุ่มค้นหา LinkButton โดยตรง
+            print("กำลังคลิกปุ่มค้นหา (#MainContentPlaceHolder_searchLinkButton)...")
+            btn = page.locator("#MainContentPlaceHolder_searchLinkButton")
+            if btn.count() > 0:
+                btn.click()
+                print("คลิกปุ่มค้นหาสำเร็จแล้ว รอเซิร์ฟเวอร์ Azure ประมวลผลตาราง...")
+                page.wait_for_load_state("networkidle")
+                time.sleep(5)
+            else:
+                print("ไม่พบ selector ปุ่มค้นหาโดยตรง ใช้การคลิกสำรอง...")
+                page.evaluate("""() => {
+                    const b = document.getElementById('MainContentPlaceHolder_searchLinkButton');
+                    if (b) b.click();
+                }""")
+                page.wait_for_load_state("networkidle")
+                time.sleep(5)
 
-            # 2. ค้นหาปุ่มค้นหาในหน้า
-            print("กำลังค้นหาและกดปุ่มค้นหา...")
-            search_clicked = page.evaluate("""() => {
-                // 1. หาปุ่มที่มีคำว่า ค้นหา หรือ Search
-                const inputs = Array.from(document.querySelectorAll('input[type="submit"], button, input[type="button"], a.btn'));
-                for (let el of inputs) {
-                    const txt = (el.value || el.innerText || el.id || el.name || '').toLowerCase();
-                    if (txt.includes('ค้นหา') || txt.includes('search') || el.id.includes('btnSearch') || el.name.includes('btnSearch')) {
-                        el.click();
-                        return 'clicked: ' + (el.id || el.value || el.innerText);
-                    }
-                }
-                
-                // 2. ถ้าหาไม่เจอ ให้ลอง submit ฟอร์มหลัก
-                const form = document.forms[0];
-                if (form) {
-                    if (typeof __doPostBack === 'function') {
-                        __doPostBack('ctl00$MainContentPlaceHolder$btnSearch', '');
-                        return 'invoked __doPostBack';
-                    }
-                    form.submit();
-                    return 'form submitted';
-                }
-                return 'not found';
-            }""")
-
-            print(f"ผลการกดปุ่มค้นหา: {search_clicked}")
-            # รอให้ผลลัพธ์ตารางโหลด
-            time.sleep(5)
-
-            # 3. สแกนตารางห้องและช่วงเวลา
+            # 3. สแกนตารางห้อง
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
                 "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
@@ -181,7 +152,7 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                # กรองเฉพาะชื่อห้อง เช่น 9 ห้อง 905
+                # กรองชื่อห้องเฉพาะ เช่น 9 ห้อง 905
                 if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
                     continue
 
@@ -207,7 +178,7 @@ def run_scraper():
         finally:
             browser.close()
 
-    # 1. เขียน data.js สำรอง
+    # บันทึก data.js
     try:
         with open("data.js", "w", encoding="utf-8") as f:
             f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
@@ -215,7 +186,7 @@ def run_scraper():
     except Exception as e:
         print(f"บันทึก data.js ไม่สำเร็จ: {e}")
 
-    # 2. ส่งเข้า Google Sheets
+    # ส่งเข้า Google Sheets
     if GAS_WEBHOOK_URL and len(scraped_data["rooms"]) > 0:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
