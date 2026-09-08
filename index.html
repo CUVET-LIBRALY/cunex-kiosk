@@ -420,10 +420,13 @@
       const lastUpdated = document.getElementById('lastUpdated');
       const rooms = data.rooms || [];
       
-      let activeSlots = defaultTimeSlots;
+     let activeSlots = defaultTimeSlots;
       if (rooms.length > 0 && rooms[0].slots) {
         const keys = Object.keys(rooms[0].slots);
-        if (keys.length > 0) activeSlots = keys;
+        if (keys.length > 0) {
+          // กรองเอาเฉพาะช่วงเวลาที่ไม่ใช่ 19:00 - 20:00 หรือช่วงที่เริ่มตั้งแต่ 19:00 เป็นต้นไป
+          activeSlots = keys.filter(slot => !slot.includes("19:00 - 20:00") && !slot.startsWith("19:") && !slot.startsWith("20:"));
+        }
       }
 
       renderTableHeader(activeSlots);
