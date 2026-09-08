@@ -32,7 +32,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # ตรวจสอบสีเทา (ปิดทำการ)
+        # ตรวจสอบสีเทา (ปิดบริการ)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -45,7 +45,7 @@ def parse_cell_status(cell):
                     # สีเทา
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
-                    # สีแดง / ชมพู (จองแล้ว / ถูกใช้งาน)
+                    # สีแดง / ชมพู (จองแล้ว / ใช้งาน)
                     if r > g + 40 and r > b:
                         return "busy"
                     # สีเหลือง (สนใจ)
@@ -88,10 +88,10 @@ def run_scraper():
 
         try:
             print(f"กำลังเปิดระบบ CU NEX: {TARGET_URL}")
-            page.goto(TARGET_URL, timeout=60000, wait_until="networkidle")
-            time.sleep(2)
+            page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
+            time.sleep(3)
 
-            # ตรวจสอบว่าต้องล็อกอินหรือไม่
+            # ตรวจสอบการเข้าสู่ระบบ
             if "login" in page.url.lower() or page.locator("input[type='password']").count() > 0:
                 print("พบหน้าเข้าสู่ระบบ กำลังกรอกรหัส...")
                 if page.locator("input[name*='user'], input[type='text'], input[type='email']").count() > 0:
@@ -102,21 +102,25 @@ def run_scraper():
                 submit_btn = page.locator("button[type='submit'], input[type='submit'], .btn-login, button:has-text('เข้าสู่ระบบ')")
                 if submit_btn.count() > 0:
                     submit_btn.first.click()
-                    time.sleep(4)
+                    print("กดปุ่มเข้าสู่ระบบแล้ว รอโหลดหน้า...")
+                    page.wait_for_load_state("domcontentloaded")
+                    time.sleep(5)
                 
-                page.goto(TARGET_URL, timeout=60000, wait_until="networkidle")
-                time.sleep(2)
+                # หากยังไม่ได้อยู่ที่หน้าค้นหา ให้เข้าไปใหม่
+                if "SearchReservation.aspx" not in page.url:
+                    page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
+                    time.sleep(3)
 
-            # เลือกตึกอาคาร 60 ปี
-            print("กำลังเลือกตึก...")
-            dropdowns = page.locator("select").all()
-            for select in dropdowns:
-                opts = select.locator("option").all()
-                for opt in opts:
+            # ตรวจสอบ dropdown เลือกตึก
+            print("กำลังเลือกตึกและค้นหา...")
+            selects = page.locator("select").all()
+            for sel in selects:
+                options = sel.locator("option").all()
+                for opt in options:
                     txt = opt.inner_text()
                     if "60 ปี" in txt or "สัตวแพทย์" in txt:
                         val = opt.get_attribute("value")
-                        select.select_option(val)
+                        sel.select_option(val)
                         print(f"เลือกตึกสำเร็จ: {txt}")
                         break
 
@@ -125,20 +129,19 @@ def run_scraper():
             if search_btn.count() > 0:
                 print("คลิกปุ่มค้นหา...")
                 search_btn.first.click()
-                # รอให้ระบบ PostBack และโหลดหน้าใหม่เสร็จสมบูรณ์
-                page.wait_for_load_state("networkidle")
-                time.sleep(4)
+                time.sleep(5)
+            else:
+                print("ไม่พบปุ่มค้นหา ใช้ข้อมูลที่แสดงอยู่ทันที")
 
+            # ตรวจสอบตารางผลลัพธ์
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
                 "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            # รอให้ตารางแสดงผล
-            page.wait_for_selector("table tr", timeout=15000)
-            rows = page.locator("table tr").all()
-            print(f"พบแถวทั้งหมดในระบบ {len(rows)} แถว")
+            rows = page.locator("tr").all()
+            print(f"พบแถว tr ทั้งหมด: {len(rows)} แถว")
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -146,8 +149,8 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                # ตรวจสอบชื่อห้อง (เช่น 9 ห้อง 905)
-                if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
+                # กรองเฉพาะแถวที่เป็นห้อง เช่น "9 ห้อง 905"
+                if not any(char.isdigit() for char in room_name) or "ชั้น" in room_name and len(room_name) < 5:
                     continue
 
                 room_slots = {}
