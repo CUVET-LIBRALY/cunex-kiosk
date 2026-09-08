@@ -10,7 +10,6 @@ CUNEX_PASS = os.environ.get("CUNEX_PASS")
 BUILDING_ID = os.environ.get("BUILDING_ID", "3")
 GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
 
-LOGIN_URL = "https://cunex.chula.ac.th/admin/login"
 TARGET_URL = f"https://cunex.chula.ac.th/admin/booking/table?building_id={BUILDING_ID}"
 
 def parse_cell_status(cell):
@@ -61,7 +60,7 @@ def parse_cell_status(cell):
             return "free"
 
     except Exception as e:
-        print(f"Error parsing cell: {e}")
+        pass
 
     return "free"
 
@@ -78,7 +77,6 @@ def run_scraper():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # ตั้ง User Agent และขนาดหน้าจอเลียนแบบเครื่องจริง
         context = browser.new_context(
             viewport={"width": 1440, "height": 900},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -86,33 +84,31 @@ def run_scraper():
         page = context.new_page()
 
         try:
-            print("กำลังเปิดหน้าเว็บไซต์ CU NEX...")
+            print(f"กำลังเปิด: {TARGET_URL}")
             page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
             time.sleep(3)
 
-            # ตรวจสอบว่าต้องล็อกอินหรือไม่
+            # ตรวจสอบการเข้าสู่ระบบ
             if "login" in page.url.lower() or page.locator("input[type='password']").count() > 0:
-                print("พบหน้าเข้าสู่ระบบ กำลังกรอกข้อมูล...")
+                print(f"พบหน้าล็อกอิน URL: {page.url}")
                 if page.locator("input[name*='user'], input[type='text'], input[type='email']").count() > 0:
-                    page.locator("input[name*='user'], input[type='text'], input[type='email']").first.fill(CUNEX_USER)
+                    page.locator("input[name*='user'], input[type='text'], input[type='email']").first.fill(CUNEX_USER or "")
                 if page.locator("input[type='password']").count() > 0:
-                    page.locator("input[type='password']").first.fill(CUNEX_PASS)
+                    page.locator("input[type='password']").first.fill(CUNEX_PASS or "")
                 
                 submit_btn = page.locator("button[type='submit'], input[type='submit'], .btn-login, button:has-text('เข้าสู่ระบบ')")
                 if submit_btn.count() > 0:
                     submit_btn.first.click()
-                    print("กดปุ่มเข้าสู่ระบบแล้ว รอโหลด...")
+                    print("กดปุ่ม Submit แล้ว รอ 5 วินาที...")
                     time.sleep(5)
 
+                page.screenshot(path="after_login.png")
                 page.goto(TARGET_URL, timeout=60000, wait_until="domcontentloaded")
                 time.sleep(4)
 
-            print(f"URL ปัจจุบัน: {page.url}")
-            print("กำลังค้นหาตาราง...")
-            
-            # รอโหลดโดยใช้ state='attached' ป้องกันปัญหาตารางซ่อนอยู่
-            page.wait_for_selector("table", timeout=30000, state="attached")
-            time.sleep(3)
+            # ถ่ายภาพหน้าตารางปัจจุบัน
+            page.screenshot(path="table_page.png")
+            print(f"URL ปัจจุบันที่พร้อมดึงข้อมูล: {page.url}")
 
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
@@ -121,7 +117,7 @@ def run_scraper():
             ]
 
             rows = page.locator("table tr").all()
-            print(f"พบแถวทั้งหมดในตาราง {len(rows)} แถว")
+            print(f"จำนวนแถวในตารางที่สแกนเจอ: {len(rows)}")
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -129,7 +125,6 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                # กรองเฉพาะแถวที่มีชื่อห้อง
                 if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
                     continue
 
@@ -141,9 +136,6 @@ def run_scraper():
                         status = parse_cell_status(cell)
                         room_slots[slot_name] = status
 
-                if "905" in room_name:
-                    print(f"-> ตรวจพบห้อง 905 ช่วง 18:00-19:00 สถานะ: {room_slots.get('18:00 - 19:00')}")
-
                 scraped_data["rooms"].append({
                     "room_name": room_name,
                     "floor": "9",
@@ -151,10 +143,14 @@ def run_scraper():
                     "slots": room_slots
                 })
 
-            print(f"ประมวลผลข้อมูลสำเร็จทั้งหมด {len(scraped_data['rooms'])} ห้อง")
+            print(f"ประมวลผลห้องประชุมได้: {len(scraped_data['rooms'])} ห้อง")
 
         except Exception as e:
             print(f"เกิดข้อผิดพลาด: {e}")
+            try:
+                page.screenshot(path="table_page.png")
+            except Exception:
+                pass
         finally:
             browser.close()
 
@@ -166,7 +162,7 @@ def run_scraper():
     except Exception as e:
         print(f"บันทึก data.js ไม่สำเร็จ: {e}")
 
-    # 2. ส่งข้อมูลเข้า Google Apps Script เสมอ (แม้จะเกิด error ก็ส่งเพื่อให้รู้เวลา)
+    # 2. ส่งเข้า Google Apps Script
     if GAS_WEBHOOK_URL:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
