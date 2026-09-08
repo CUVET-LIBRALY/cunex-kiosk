@@ -466,7 +466,7 @@
       renderTableHeader(activeSlots);
       renderTableData(finalRooms, activeSlots);
       lastUpdated.textContent = data.updated_at || new Date().toLocaleTimeString('th-TH');
-      syncStatus.textContent = `เชื่อมต่อปกติผ่าน ${sourceLabel}`;
+      syncStatus.textContent = `เชื่อมต่อปกติผ่าน ${sourceLabel} (ดึงข้อมูลอัตโนมัติทุก 15 นาที)`;
     }
 
     // แคชในเครื่องเบราว์เซอร์ เพื่อให้เปิดหน้าเว็บแล้วตารางขึ้นทันทีใน 0 วินาที
