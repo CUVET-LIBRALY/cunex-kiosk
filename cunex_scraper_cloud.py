@@ -5,7 +5,6 @@ import requests
 from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright
 
-# อ่านค่าคอนฟิกจาก Environment Variables (GitHub Secrets)
 CUNEX_USER = os.environ.get("CUNEX_USER")
 CUNEX_PASS = os.environ.get("CUNEX_PASS")
 BUILDING_ID = os.environ.get("BUILDING_ID", "3")
@@ -15,56 +14,63 @@ LOGIN_URL = "https://cunex.chula.ac.th/admin/login"
 TARGET_URL = f"https://cunex.chula.ac.th/admin/booking/table?building_id={BUILDING_ID}"
 
 def parse_cell_status(cell):
-    """
-    ตรวจสอบสถานะของช่องตาราง (Cell)
-    รองรับ: สีเทา/ปิดทำการ (closed), แดง/ชมพู (busy), เหลือง (pending), เขียว (free)
-    """
     try:
-        # อ่านค่าสีและ attribute ทั้งหมดแบบปลอดภัย
-        style_attr = (cell.get_attribute("style") or "").lower()
-        class_attr = (cell.get_attribute("class") or "").lower()
-        bgcolor_attr = (cell.get_attribute("bgcolor") or "").lower()
+        # อ่านค่าสีจริงและโครงสร้างภายใน cell
+        info = cell.evaluate("""el => {
+            const getBg = (node) => {
+                if (!node) return '';
+                const st = window.getComputedStyle(node);
+                return st.backgroundColor || node.getAttribute('bgcolor') || '';
+            };
+            const p = el.querySelector('p');
+            return {
+                tdBg: getBg(el),
+                pBg: getBg(p),
+                className: (el.className || '') + ' ' + (p ? p.className : ''),
+                text: el.innerText || ''
+            };
+        }""")
 
-        # อ่าน computed background-color จากเบราว์เซอร์
-        bg_color = cell.evaluate("el => window.getComputedStyle(el).backgroundColor || ''").lower()
+        td_bg = info.get('tdBg', '').lower()
+        p_bg = info.get('pBg', '').lower()
+        combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        combined_info = f"{style_attr} {class_attr} {bgcolor_attr} {bg_color}"
-
-        # 1. ตรวจสอบเงื่อนไขสีเทา (ปิดทำการ)
-        gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "#888", "#999", "#aaa", "#4a4a4a", "#343a40", "disabled", "closed", "lock"]
-        if any(k in combined_info for k in gray_keywords):
+        # 1. ดักจับสีเทา / ปิดทำการ
+        if any(k in combined for k in ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]):
             return "closed"
 
-        # ตรวจสอบค่า RGB สำหรับสีเทา
-        if "rgb" in bg_color:
-            nums = [int(n.strip()) for n in bg_color.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
-            if len(nums) >= 3:
-                r, g, b = nums[0], nums[1], nums[2]
-                if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
-                    return "closed"
-                if r > g + 40 and r > b:
-                    return "busy"
-                if r > 160 and g > 160 and b < 100:
-                    return "pending"
-                if g > r + 30 and g > b + 30:
-                    return "free"
+        for bg in [p_bg, td_bg]:
+            if "rgb" in bg:
+                nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
+                if len(nums) >= 3:
+                    r, g, b = nums[0], nums[1], nums[2]
+                    # สีเทา: R, G, B ค่าใกล้กันมาก (ความต่าง <= 20) และไม่ดำสนิทและไม่ขาวสว่าง
+                    if abs(r - g) <= 20 and abs(g - b) <= 20 and abs(r - b) <= 20 and 40 <= r <= 210:
+                        return "closed"
+                    # สีแดง/ชมพู (จองแล้ว)
+                    if r > g + 40 and r > b:
+                        return "busy"
+                    # สีเหลือง (สนใจ)
+                    if r > 160 and g > 160 and b < 100:
+                        return "pending"
+                    # สีเขียว (ว่าง)
+                    if g > r + 30 and g > b + 30:
+                        return "free"
 
-        # 2. ตรวจสอบคำระบุสีทั่วไป
-        if any(c in combined_info for c in ["red", "#ff0000", "#dc3545", "ชมพู"]):
+        if "red" in combined or "#ff0000" in combined:
             return "busy"
-        if any(c in combined_info for c in ["yellow", "#ffff00", "#ffc107"]):
+        if "yellow" in combined or "#ffff00" in combined:
             return "pending"
-        if any(c in combined_info for c in ["green", "#008000", "#28a745", "#22c55e"]):
+        if "green" in combined or "#008000" in combined:
             return "free"
 
     except Exception as e:
-        print(f"Cell check error: {e}")
+        print(f"Error parsing cell: {e}")
 
     return "free"
 
 
 def run_scraper():
-    # คำนวณเวลาไทย UTC+7 โดยไม่ต้องพึ่งพาไลบรารีภายนอก
     tz_th = timezone(timedelta(hours=7))
     now_th = datetime.now(tz_th).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now_th}] เริ่มต้นการทำงาน CU NEX Scraper...")
@@ -84,7 +90,6 @@ def run_scraper():
             page.goto(TARGET_URL, timeout=45000)
             page.wait_for_load_state("networkidle")
 
-            # ตรวจสอบการเข้าสู่ระบบ
             if "login" in page.url.lower() or page.locator("input[type='password']").count() > 0:
                 print("กำลังเข้าสู่ระบบ...")
                 if page.locator("input[name*='user'], input[type='text'], input[type='email']").count() > 0:
@@ -111,8 +116,9 @@ def run_scraper():
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            rows = page.locator("table tr").all()
-            print(f"พบแถวทั้งหมดในตาราง {len(rows)} แถว")
+            rows = page.locator("table tr[id*='MainContentPlaceHolder']").all()
+            if not rows:
+                rows = page.locator("table tr").all()[1:]
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -138,29 +144,29 @@ def run_scraper():
                     "slots": room_slots
                 })
 
-            print(f"ประมวลผลข้อมูลห้องสำเร็จทั้งหมด {len(scraped_data['rooms'])} ห้อง")
+            print(f"ประมวลผลข้อมูลสำเร็จ {len(scraped_data['rooms'])} ห้อง")
 
         except Exception as e:
-            print(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+            print(f"เกิดข้อผิดพลาด: {e}")
         finally:
             browser.close()
 
-    # 1. บันทึกลง data.js
+    # 1. บันทึกลง data.js สำหรับ Fast Cache
     try:
         with open("data.js", "w", encoding="utf-8") as f:
             f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
-        print("บันทึกข้อมูลลง data.js สำเร็จ")
+        print("บันทึกข้อมูลลง data.js เรียบร้อย")
     except Exception as e:
-        print(f"บันทึกลง data.js ล้มเหลว: {e}")
+        print(f"บันทึก data.js ไม่สำเร็จ: {e}")
 
-    # 2. ส่งเข้า Google Apps Script
+    # 2. ส่งข้อมูลเข้า Google Apps Script
     if GAS_WEBHOOK_URL:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
             res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=20)
-            print(f"ผลลัพธ์จาก GAS: {res.status_code} - {res.text}")
+            print(f"สถานะ GAS: {res.status_code} - {res.text}")
         except Exception as e:
-            print(f"ส่งข้อมูลไป GAS ล้มเหลว: {e}")
+            print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
 
 if __name__ == "__main__":
     run_scraper()
