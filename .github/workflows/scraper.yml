@@ -4,10 +4,10 @@ on:
   schedule:
     # รันอัตโนมัติทุก 15 นาที
     - cron: '*/15 * * * *'
-  workflow_dispatch: # ปุ่มกดรันด้วยตนเอง
+  workflow_dispatch: # สำหรับกดรันด้วยตนเอง
 
 permissions:
-  contents: write # ให้สิทธิ์บันทึกไฟล์ data.js ลง Repository
+  contents: write
 
 jobs:
   scrape-and-sync:
@@ -43,3 +43,10 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data.js
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update data.js [skip ci]" && git push)
+
+      - name: อัปโหลดภาพหน้าจอตรวจสอบ (Debug Screenshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: "*.png"
