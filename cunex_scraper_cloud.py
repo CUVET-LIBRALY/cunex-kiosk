@@ -112,60 +112,61 @@ def run_scraper():
             time.sleep(3)
             print(f"อยู่ที่หน้า: {page.url}")
 
-            # รอให้ Dropdown โหลดตัวเลือก (options) จนครบ
-            print("กำลังรอตัวเลือกตึกใน Dropdown...")
-            page.wait_for_selector("select option", timeout=20000)
+            # รอให้ Element select ปรากฏ (โดยใช้ state='attached' เพื่อไม่ติดปัญหา visibility ของ option)
+            print("กำลังตรวจหา Dropdown ตึก...")
+            page.wait_for_selector("select", state="attached", timeout=20000)
             time.sleep(2)
 
-            building_selected = False
-            selects = page.locator("select").all()
-            for sel in selects:
-                options = sel.locator("option").all()
-                for opt in options:
-                    txt = opt.inner_text().strip()
-                    val = opt.get_attribute("value") or ""
-                    
-                    # ตรวจสอบว่าตรงกับ อาคาร 60 ปี หรือค่า BUILDING_ID หรือไม่
-                    match = False
-                    if BUILDING_ID and (val == BUILDING_ID or BUILDING_ID in txt):
-                        match = True
-                    elif "60 ปี" in txt or "สัตวแพทย์" in txt or "60th" in txt:
-                        match = True
+            # เลือกตึก อาคาร 60 ปี โดยดึงรายการ options ผ่าน evaluate ป้องกัน Playwright Visibility Timeout
+            building_result = page.evaluate("""() => {
+                const selects = Array.from(document.querySelectorAll('select'));
+                for (let sel of selects) {
+                    for (let opt of Array.from(sel.options)) {
+                        const txt = (opt.innerText || opt.textContent || '').trim();
+                        const val = opt.value || '';
+                        if (txt.includes('60 ปี') || txt.includes('สัตวแพทย์') || txt.includes('60th')) {
+                            sel.value = val;
+                            // กระตุ้น change event เผื่อ ASP.NET UpdatePanel
+                            sel.dispatchEvent(new Event('change', { bubbles: true }));
+                            return { found: true, text: txt, val: val, selId: sel.id || sel.name || 'select' };
+                        }
+                    }
+                }
+                return { found: false };
+            }""")
 
-                    if match:
-                        sel.select_option(val)
-                        print(f"เลือกตึกสำเร็จ: {txt} (value={val})")
-                        building_selected = True
-                        # รอเผื่อมี UpdatePanel ทำ PostBack รีโหลด
-                        time.sleep(3)
-                        break
-                if building_selected:
-                    break
-
-            if not building_selected:
-                print("คำเตือน: ไม่พบตัวเลือก 'อาคาร 60 ปี' ใน Dropdown กำลังตรวจสอบรายการที่มี:")
-                for sel in selects:
-                    for opt in sel.locator("option").all()[:5]:
-                        print(f"  - {opt.inner_text().strip()}")
+            if building_result.get("found"):
+                print(f"เลือกตึกสำเร็จ: {building_result.get('text')} (value={building_result.get('val')})")
+                time.sleep(3)
+            else:
+                print("คำเตือน: ไม่พบตัวเลือก 'อาคาร 60 ปี' ใน Dropdown หรืออาจเลือกไว้อยู่แล้ว")
 
             # คลิกปุ่มค้นหา
-            print("กำลังค้นหาปุ่มค้นหา...")
-            search_button = page.locator("input[type='submit'][value*='ค้นหา'], button[type='submit']:has-text('ค้นหา'), input[id*='btnSearch'], input[name*='btnSearch'], input[value='ค้นหา']").first
-            
-            if search_button.count() > 0:
-                print(f"พบคลิกปุ่มค้นหา (Submit) กำลังประมวลผล...")
-                search_button.click()
-            else:
-                print("คลิกปุ่มค้นหาทั่วไป...")
-                page.evaluate("""() => {
-                    const btn = Array.from(document.querySelectorAll('input, button, a')).find(el => (el.value && el.value.includes('ค้นหา')) || (el.innerText && el.innerText.includes('ค้นหา')));
-                    if (btn) btn.click();
-                    else if (document.forms[0]) document.forms[0].submit();
-                }""")
+            print("กำลังค้นหาและคลิกปุ่มค้นหา...")
+            clicked = page.evaluate("""() => {
+                // ค้นหาปุ่มค้นหาของ ASP.NET
+                const btn = Array.from(document.querySelectorAll('input[type="submit"], button, input[type="button"]')).find(el => {
+                    const v = (el.value || el.innerText || el.id || el.name || '').toLowerCase();
+                    return v.includes('ค้นหา') || v.includes('search') || v.includes('btnsearch');
+                });
+                if (btn) {
+                    btn.click();
+                    return true;
+                }
+                // กรณีเป็นฟอร์ม ให้ submit โดยตรง
+                if (document.forms.length > 0) {
+                    document.forms[0].submit();
+                    return true;
+                }
+                return false;
+            }""")
 
-            # รอผลการโหลดของตาราง
-            print("กำลังรอผลลัพธ์ตาราง...")
-            time.sleep(6)
+            if clicked:
+                print("คลิกปุ่มค้นหาสำเร็จ รอโหลดผลลัพธ์ตาราง 6 วินาที...")
+                time.sleep(6)
+            else:
+                print("ไม่พบคลิกปุ่มค้นหา กำลังตรวจสอบข้อมูลในหน้า...")
+                time.sleep(3)
 
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
@@ -173,6 +174,7 @@ def run_scraper():
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
+            # รอแถวตาราง
             rows = page.locator("tr").all()
             print(f"พบแถวตารางทั้งหมด: {len(rows)} แถว")
 
