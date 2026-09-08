@@ -15,7 +15,6 @@ TARGET_URL = f"https://cunex.chula.ac.th/admin/booking/table?building_id={BUILDI
 
 def parse_cell_status(cell):
     try:
-        # อ่านค่าสีจริงและโครงสร้างภายใน cell
         info = cell.evaluate("""el => {
             const getBg = (node) => {
                 if (!node) return '';
@@ -26,6 +25,7 @@ def parse_cell_status(cell):
             return {
                 tdBg: getBg(el),
                 pBg: getBg(p),
+                cellId: el.id || '',
                 className: (el.className || '') + ' ' + (p ? p.className : ''),
                 text: el.innerText || ''
             };
@@ -35,8 +35,9 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # 1. ดักจับสีเทา / ปิดทำการ
-        if any(k in combined for k in ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]):
+        # 1. ตรวจสอบสีเทา / ปิดทำการ
+        gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
+        if any(k in combined for k in gray_keywords):
             return "closed"
 
         for bg in [p_bg, td_bg]:
@@ -44,16 +45,13 @@ def parse_cell_status(cell):
                 nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
                 if len(nums) >= 3:
                     r, g, b = nums[0], nums[1], nums[2]
-                    # สีเทา: R, G, B ค่าใกล้กันมาก (ความต่าง <= 20) และไม่ดำสนิทและไม่ขาวสว่าง
-                    if abs(r - g) <= 20 and abs(g - b) <= 20 and abs(r - b) <= 20 and 40 <= r <= 210:
+                    # สีเทา: ค่า R, G, B ใกล้เคียงกัน และความสว่างอยู่ในเกณฑ์สีเทา
+                    if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
-                    # สีแดง/ชมพู (จองแล้ว)
                     if r > g + 40 and r > b:
                         return "busy"
-                    # สีเหลือง (สนใจ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
-                    # สีเขียว (ว่าง)
                     if g > r + 30 and g > b + 30:
                         return "free"
 
@@ -137,6 +135,10 @@ def run_scraper():
                         status = parse_cell_status(cell)
                         room_slots[slot_name] = status
 
+                # แสดง Log ตรวจสอบเฉพาะห้อง 905 เพื่อยืนยันค่า
+                if "905" in room_name:
+                    print(f"[ห้อง 905] สถานะ 18:00-19:00 -> {room_slots.get('18:00 - 19:00')}")
+
                 scraped_data["rooms"].append({
                     "room_name": room_name,
                     "floor": "9",
@@ -164,7 +166,7 @@ def run_scraper():
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
             res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=20)
-            print(f"สถานะ GAS: {res.status_code} - {res.text}")
+            print(f"สถานะ GAS: {res.status_code}")
         except Exception as e:
             print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
 
