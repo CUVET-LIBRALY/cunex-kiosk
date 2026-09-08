@@ -34,7 +34,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # ตรวจสอบสีเทา (ปิดทำการ)
+        # ตรวจสอบสถานะปิดบริการ (สีเทา)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -47,10 +47,10 @@ def parse_cell_status(cell):
                     # สีเทา
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
-                    # สีแดง / ชมพู (จองแล้ว)
+                    # สีแดง / ชมพู (จองแล้ว / ใช้งาน)
                     if r > g + 40 and r > b:
                         return "busy"
-                    # สีเหลือง (สนใจ/รอนุมัติ)
+                    # สีเหลือง (สนใจ / รอนุมัติ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
                     # สีเขียว (ว่าง)
@@ -89,10 +89,10 @@ def run_scraper():
 
         try:
             print(f"กำลังเปิดเข้าระบบ CU NEX: {LOGIN_URL}")
-            page.goto(LOGIN_URL, timeout=45000, wait_until="domcontentloaded")
+            page.goto(LOGIN_URL, timeout=45000, wait_until="networkidle")
             time.sleep(2)
 
-            # ตรวจสอบการเข้าสู่ระบบ
+            # ขั้นตอนการเข้าสู่ระบบ
             if page.locator("input[type='password']").count() > 0:
                 print("พบหน้าเข้าสู่ระบบ กำลังกรอกรหัส...")
                 user_input = page.locator("input[type='text'], input[name*='User'], input[name*='user'], input[id*='User']").first
@@ -103,71 +103,103 @@ def run_scraper():
                 
                 login_btn = page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ'], input[value*='Login']").first
                 login_btn.click()
-                print("กดปุ่มเข้าสู่ระบบแล้ว รอเซสชัน 5 วินาที...")
-                time.sleep(5)
+                print("คลิกปุ่มเข้าสู่ระบบแล้ว กำลังรอการยืนยันตัวตน...")
+                page.wait_for_load_state("networkidle")
+                time.sleep(4)
 
             # ตรงไปที่หน้าค้นหาห้อง
             print(f"กำลังเปิดหน้าค้นหาห้อง: {TARGET_URL}")
-            page.goto(TARGET_URL, timeout=45000, wait_until="domcontentloaded")
-            time.sleep(3)
+            page.goto(TARGET_URL, timeout=45000, wait_until="networkidle")
+            time.sleep(4)
             print(f"อยู่ที่หน้า: {page.url}")
 
-            # รอให้ Element select ปรากฏ (โดยใช้ state='attached' เพื่อไม่ติดปัญหา visibility ของ option)
-            print("กำลังตรวจหา Dropdown ตึก...")
-            page.wait_for_selector("select", state="attached", timeout=20000)
-            time.sleep(2)
-
-            # เลือกตึก อาคาร 60 ปี โดยดึงรายการ options ผ่าน evaluate ป้องกัน Playwright Visibility Timeout
-            building_result = page.evaluate("""() => {
+            # ตรวจสอบและเลือก Dropdown ทั้งหมดที่มีในหน้า
+            print("กำลังวิเคราะห์ Dropdown ในหน้า...")
+            page.wait_for_selector("select", timeout=15000)
+            
+            # รอดูตัวเลือกใน Dropdown นานขึ้น เผื่อโหลด AJAX
+            time.sleep(3)
+            
+            # ให้ JavaScript ตรวจหาตัวเลือกทั้งหมดและเลือกตึก
+            eval_result = page.evaluate("""() => {
                 const selects = Array.from(document.querySelectorAll('select'));
-                for (let sel of selects) {
-                    for (let opt of Array.from(sel.options)) {
-                        const txt = (opt.innerText || opt.textContent || '').trim();
-                        const val = opt.value || '';
-                        if (txt.includes('60 ปี') || txt.includes('สัตวแพทย์') || txt.includes('60th')) {
-                            sel.value = val;
-                            // กระตุ้น change event เผื่อ ASP.NET UpdatePanel
+                const summary = [];
+                let selectedBuilding = false;
+                let selectedText = '';
+
+                selects.forEach((sel, selIdx) => {
+                    const opts = Array.from(sel.options).map(o => ({ value: o.value, text: (o.text || o.innerText || '').trim() }));
+                    summary.push({ selectId: sel.id || sel.name || `select_${selIdx}`, options: opts });
+
+                    // ลองค้นหาตัวเลือกตึก
+                    opts.forEach(opt => {
+                        const t = opt.text;
+                        if (t.includes('60 ปี') || t.includes('สัตวแพทย์') || t.includes('60th') || t.includes('๖๐ ปี')) {
+                            sel.value = opt.value;
                             sel.dispatchEvent(new Event('change', { bubbles: true }));
-                            return { found: true, text: txt, val: val, selId: sel.id || sel.name || 'select' };
+                            selectedBuilding = true;
+                            selectedText = t;
                         }
+                    });
+                });
+
+                return { summary, selectedBuilding, selectedText };
+            }""")
+
+            print(f"พบ Dropdown ทั้งหมด {len(eval_result.get('summary', []))} ตัว:")
+            for item in eval_result.get("summary", []):
+                opt_texts = [o["text"] for o in item["options"]]
+                print(f" - [{item['selectId']}]: มี {len(opt_texts)} ตัวเลือก ตัวอย่าง: {opt_texts[:5]}")
+
+            if eval_result.get("selectedBuilding"):
+                print(f"เลือกตึกสำเร็จ: {eval_result.get('selectedText')}")
+                page.wait_for_load_state("networkidle")
+                time.sleep(3)
+            else:
+                print("ยังไม่พบคำว่า 60 ปี ในตัวเลือก กำลังลองใช้ค่า BUILDING_ID หรือตัวเลือกที่มี...")
+                if BUILDING_ID:
+                    page.evaluate(f"""(bid) => {{
+                        const selects = Array.from(document.querySelectorAll('select'));
+                        for (let sel of selects) {{
+                            for (let opt of Array.from(sel.options)) {{
+                                if (opt.value === bid || opt.text.includes(bid)) {{
+                                    sel.value = opt.value;
+                                    sel.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                }}
+                            }}
+                        }}
+                    }}""", BUILDING_ID)
+                    time.sleep(2)
+
+            # ค้นหาและคลิกปุ่มค้นหา
+            print("กำลังคลิกปุ่มค้นหา...")
+            search_success = page.evaluate("""() => {
+                // ค้นหาปุ่มค้นหาตาม Attribute
+                const candidates = Array.from(document.querySelectorAll('input[type="submit"], input[type="button"], button'));
+                for (let btn of candidates) {
+                    const val = (btn.value || btn.innerText || btn.id || btn.name || '').toLowerCase();
+                    if (val.includes('ค้นหา') || val.includes('search') || val.includes('btnsearch')) {
+                        btn.click();
+                        return { clicked: true, info: btn.outerHTML.substring(0, 100) };
                     }
                 }
-                return { found: false };
+                // ถ้าไม่พบ ให้ลองคลิกปุ่ม submit ตัวแรก
+                if (candidates.length > 0) {
+                    candidates[0].click();
+                    return { clicked: true, info: 'first_candidate' };
+                }
+                return { clicked: false };
             }""")
 
-            if building_result.get("found"):
-                print(f"เลือกตึกสำเร็จ: {building_result.get('text')} (value={building_result.get('val')})")
-                time.sleep(3)
-            else:
-                print("คำเตือน: ไม่พบตัวเลือก 'อาคาร 60 ปี' ใน Dropdown หรืออาจเลือกไว้อยู่แล้ว")
-
-            # คลิกปุ่มค้นหา
-            print("กำลังค้นหาและคลิกปุ่มค้นหา...")
-            clicked = page.evaluate("""() => {
-                // ค้นหาปุ่มค้นหาของ ASP.NET
-                const btn = Array.from(document.querySelectorAll('input[type="submit"], button, input[type="button"]')).find(el => {
-                    const v = (el.value || el.innerText || el.id || el.name || '').toLowerCase();
-                    return v.includes('ค้นหา') || v.includes('search') || v.includes('btnsearch');
-                });
-                if (btn) {
-                    btn.click();
-                    return true;
-                }
-                // กรณีเป็นฟอร์ม ให้ submit โดยตรง
-                if (document.forms.length > 0) {
-                    document.forms[0].submit();
-                    return true;
-                }
-                return false;
-            }""")
-
-            if clicked:
-                print("คลิกปุ่มค้นหาสำเร็จ รอโหลดผลลัพธ์ตาราง 6 วินาที...")
+            if search_success.get("clicked"):
+                print(f"คลิกปุ่มค้นหาสำเร็จ ({search_success.get('info')}) รอโหลดข้อมูลตาราง 6 วินาที...")
+                page.wait_for_load_state("networkidle")
                 time.sleep(6)
             else:
-                print("ไม่พบคลิกปุ่มค้นหา กำลังตรวจสอบข้อมูลในหน้า...")
+                print("ไม่พบปุ่มค้นหา กำลังตรวจแถวข้อมูล...")
                 time.sleep(3)
 
+            # อ่านช่วงเวลาทั้ง 11 สล็อต
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
                 "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
@@ -176,7 +208,7 @@ def run_scraper():
 
             # รอแถวตาราง
             rows = page.locator("tr").all()
-            print(f"พบแถวตารางทั้งหมด: {len(rows)} แถว")
+            print(f"พบแถวตารางทั้งหมดในหน้า: {len(rows)} แถว")
 
             for row in rows:
                 cells = row.locator("td").all()
