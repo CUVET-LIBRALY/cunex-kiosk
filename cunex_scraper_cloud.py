@@ -25,7 +25,6 @@ def parse_cell_status(cell):
             return {
                 tdBg: getBg(el),
                 pBg: getBg(p),
-                cellId: el.id || '',
                 className: (el.className || '') + ' ' + (p ? p.className : ''),
                 text: el.innerText || ''
             };
@@ -35,7 +34,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # 1. ตรวจสอบสีเทา / ปิดทำการ
+        # ตรวจสอบสีเทา / ปิดทำการ
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -45,13 +44,16 @@ def parse_cell_status(cell):
                 nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
                 if len(nums) >= 3:
                     r, g, b = nums[0], nums[1], nums[2]
-                    # สีเทา: ค่า R, G, B ใกล้เคียงกัน และความสว่างอยู่ในเกณฑ์สีเทา
+                    # สีเทา: ค่า RGB ใกล้เคียงกัน และไม่ใช่สีขาวสว่าง
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
+                    # สีแดง / ชมพู (ถูกจอง)
                     if r > g + 40 and r > b:
                         return "busy"
+                    # สีเหลือง (สนใจ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
+                    # สีเขียว (ว่าง)
                     if g > r + 30 and g > b + 30:
                         return "free"
 
@@ -88,6 +90,7 @@ def run_scraper():
             page.goto(TARGET_URL, timeout=45000)
             page.wait_for_load_state("networkidle")
 
+            # จัดการล็อกอินถ้าจำเป็น
             if "login" in page.url.lower() or page.locator("input[type='password']").count() > 0:
                 print("กำลังเข้าสู่ระบบ...")
                 if page.locator("input[name*='user'], input[type='text'], input[type='email']").count() > 0:
@@ -104,9 +107,9 @@ def run_scraper():
                 page.goto(TARGET_URL, timeout=45000)
                 page.wait_for_load_state("networkidle")
 
-            print("กำลังค้นหาตารางการจอง...")
+            print("กำลังรอตารางแสดงผล...")
             page.wait_for_selector("table", timeout=20000)
-            time.sleep(2)
+            time.sleep(3)
 
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
@@ -114,9 +117,9 @@ def run_scraper():
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            rows = page.locator("table tr[id*='MainContentPlaceHolder']").all()
-            if not rows:
-                rows = page.locator("table tr").all()[1:]
+            # ค้นหาทุกแถวในตารางโดยไม่ล็อก id
+            rows = page.locator("table tr").all()
+            print(f"พบแถวทั้งหมดในตาราง {len(rows)} แถว")
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -124,7 +127,8 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                if not any(char.isdigit() for char in room_name):
+                # กรองเฉพาะแถวที่เป็นชื่อห้อง (มีเลขห้อง เช่น 905, 907)
+                if not any(char.isdigit() for char in room_name) or "ชั้น" in room_name and len(room_name) < 5:
                     continue
 
                 room_slots = {}
@@ -135,10 +139,6 @@ def run_scraper():
                         status = parse_cell_status(cell)
                         room_slots[slot_name] = status
 
-                # แสดง Log ตรวจสอบเฉพาะห้อง 905 เพื่อยืนยันค่า
-                if "905" in room_name:
-                    print(f"[ห้อง 905] สถานะ 18:00-19:00 -> {room_slots.get('18:00 - 19:00')}")
-
                 scraped_data["rooms"].append({
                     "room_name": room_name,
                     "floor": "9",
@@ -146,29 +146,31 @@ def run_scraper():
                     "slots": room_slots
                 })
 
-            print(f"ประมวลผลข้อมูลสำเร็จ {len(scraped_data['rooms'])} ห้อง")
+            print(f"ดึงข้อมูลห้องสำเร็จทั้งหมด {len(scraped_data['rooms'])} ห้อง")
 
         except Exception as e:
             print(f"เกิดข้อผิดพลาด: {e}")
         finally:
             browser.close()
 
-    # 1. บันทึกลง data.js สำหรับ Fast Cache
+    # บันทึกลง data.js
     try:
         with open("data.js", "w", encoding="utf-8") as f:
             f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
-        print("บันทึกข้อมูลลง data.js เรียบร้อย")
+        print("บันทึก data.js เรียบร้อย")
     except Exception as e:
         print(f"บันทึก data.js ไม่สำเร็จ: {e}")
 
-    # 2. ส่งข้อมูลเข้า Google Apps Script
-    if GAS_WEBHOOK_URL:
+    # ส่งเข้า Google Apps Script
+    if GAS_WEBHOOK_URL and len(scraped_data["rooms"]) > 0:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
             res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=20)
             print(f"สถานะ GAS: {res.status_code}")
         except Exception as e:
             print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
+    else:
+        print("ไม่พบข้อมูลห้อง หรือไม่ได้ระบุ Webhook URL ข้ามการส่งข้อมูล")
 
 if __name__ == "__main__":
     run_scraper()
