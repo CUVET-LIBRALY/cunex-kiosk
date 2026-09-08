@@ -22,9 +22,8 @@
       --status-free-border: #7dd3fc;
       --status-pending: #fef08a;     /* เหลือง ห้องถูกสนใจ */
       --status-pending-border: #eab308;
-      --status-busy: #fbcfe8;        /* ชมพู ไม่ว่าง / ถูกจอง */
+      --status-busy: #fbcfe8;        /* ชมพู ไม่ว่าง / ถูกจอง / ถูกใช้งาน */
       --status-busy-border: #f43f5e;
-      --status-busy-icon: #be123c;   /* สีหัวสัตว์เงาทึบ */
       --status-closed: #e2e8f0;      /* เทา ปิดบริการ */
       --status-closed-border: #94a3b8;
     }
@@ -45,6 +44,7 @@
       flex-direction: column;
     }
 
+    /* Top Control Bar */
     .top-bar {
       background-color: var(--header-bg);
       color: var(--header-text);
@@ -84,6 +84,7 @@
       margin-top: 2px;
     }
 
+    /* Legend Badges */
     .status-legend {
       display: flex;
       gap: 14px;
@@ -114,6 +115,7 @@
     .legend-badge.busy { background: var(--status-busy); border-color: var(--status-busy-border); }
     .legend-badge.closed { background: var(--status-closed); border-color: var(--status-closed-border); }
 
+    /* Library Logo Box */
     .logo-container {
       display: flex;
       align-items: center;
@@ -131,6 +133,7 @@
       display: block;
     }
 
+    /* Main Table Container */
     .table-card {
       background: var(--card-bg);
       border-radius: 12px;
@@ -197,12 +200,11 @@
       color: var(--text-muted);
     }
 
+    /* Time Slot Cells */
     .slot-cell {
       transition: all 0.2s ease;
       cursor: default;
-      font-size: 1.15rem;
       user-select: none;
-      vertical-align: middle;
     }
 
     .slot-cell.free {
@@ -221,24 +223,17 @@
     }
     .slot-cell.pending::after {
       content: "⏳";
-      font-size: 1.05rem;
+      font-size: 1rem;
     }
 
+    /* ช่อง Busy กลับมาใช้ไอคอน 👤 แบบดั้งเดิม */
     .slot-cell.busy {
       background-color: var(--status-busy);
+      color: #be123c;
     }
-
-    .pet-head-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      line-height: 1;
-    }
-
-    .pet-head-icon svg {
-      width: 22px;
-      height: 22px;
-      fill: var(--status-busy-icon);
+    .slot-cell.busy::after {
+      content: "👤";
+      font-size: 1rem;
     }
 
     .slot-cell.closed {
@@ -251,6 +246,7 @@
       font-weight: bold;
     }
 
+    /* Footer status info */
     .footer-bar {
       padding: 8px 18px;
       background: #f8fafc;
@@ -281,6 +277,7 @@
 </head>
 <body>
 
+  <!-- Top Header Bar -->
   <header class="top-bar">
     <div class="system-title">
       <div>
@@ -290,6 +287,7 @@
       <div class="realtime-clock" id="clock">00:00:00</div>
     </div>
 
+    <!-- Status Legend -->
     <div class="status-legend">
       <div class="legend-item">
         <span class="legend-badge free"></span>
@@ -301,7 +299,7 @@
       </div>
       <div class="legend-item">
         <span class="legend-badge busy"></span>
-        <span id="lblBusy">ไม่ว่าง / มีผู้ใช้งาน</span>
+        <span id="lblBusy">ไม่ว่าง / มีคนจอง</span>
       </div>
       <div class="legend-item">
         <span class="legend-badge closed"></span>
@@ -309,11 +307,13 @@
       </div>
     </div>
 
+    <!-- Library Logo Section -->
     <div class="logo-container">
       <img src="https://cdn.phototourl.com/free/2026-09-07-daa6828c-663e-4342-8f19-94a0a1df7678.png" alt="โลโก้ห้องสมุด คณะสัตวแพทยศาสตร์ จุฬาฯ" class="library-logo">
     </div>
   </header>
 
+  <!-- Table Board -->
   <main class="table-card">
     <div class="table-wrapper">
       <table id="scheduleTable">
@@ -336,10 +336,12 @@
     </footer>
   </main>
 
+  <!-- โหลดไฟล์ config.js และ data.js สำหรับใช้งานแบบสำรอง -->
   <script src="config.js"></script>
   <script id="cunexDataSource" src="data.js"></script>
   
   <script>
+    // 1. นำการตั้งค่าจาก config.js มาใส่ในหน้าจอ
     function applyAdminConfig() {
       if (window.DASHBOARD_CONFIG) {
         const cfg = window.DASHBOARD_CONFIG;
@@ -352,6 +354,7 @@
     }
     applyAdminConfig();
 
+    // 2. นาฬิกาและวันที่แบบ Realtime
     function updateClock() {
       const now = new Date();
       document.getElementById('clock').textContent = now.toLocaleTimeString('th-TH', { hour12: false });
@@ -365,12 +368,14 @@
     setInterval(updateClock, 1000);
     updateClock();
 
+    // รายการเวลามาตรฐาน 08:00 - 19:00 น. (ตัดช่วง 19:00 - 20:00 ออก)[cite: 1]
     const defaultTimeSlots = [
       "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
       "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
       "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
     ];
 
+    // รายชื่อห้องประชุมมาตรฐานทั้งหมด 10 ห้อง ของอาคาร 60 ปี[cite: 1]
     const ALL_REQUIRED_ROOMS = [
       { id: "905", name: "ห้อง 905", floor: "9", building: "อาคาร 60 ปี" },
       { id: "906", name: "ห้อง 906", floor: "9", building: "อาคาร 60 ปี" },
@@ -383,23 +388,6 @@
       { id: "931", name: "ห้อง 931", floor: "9", building: "อาคาร 60 ปี" },
       { id: "932", name: "ห้อง 932", floor: "9", building: "อาคาร 60 ปี" }
     ];
-
-    // รูปเงาหัวสัตว์ทรงเดียวกับไอคอน 👤 (หัวสุนัข และ หัวแมว)
-    const PET_HEAD_ICONS = [
-      // หัวสุนัข (Dog Silhouette Head)
-      `<svg viewBox="0 0 24 24"><path d="M12 4c-3.3 0-6 2.7-6 6 0 1.9.9 3.6 2.3 4.7-.2.7-.3 1.5-.3 2.3 0 2.2 2.7 4 6 4s6-1.8 6-4c0-.8-.1-1.6-.3-2.3 1.4-1.1 2.3-2.8 2.3-4.7 0-3.3-2.7-6-6-6zm-4.5 3c-.8 0-1.5.7-1.5 1.5v3.2c-.6-.7-1-1.6-1-2.7 0-2.2 1.1-4 2.5-4v2zm9 0v-2c1.4 0 2.5 1.8 2.5 4 0 1.1-.4 2-1 2.7V8.5c0-.8-.7-1.5-1.5-1.5z"/></svg>`,
-      // หัวแมว (Cat Silhouette Head)
-      `<svg viewBox="0 0 24 24"><path d="M12 6c-3.3 0-6 2.5-6 5.5 0 1.6.8 3.1 2 4.1-.1.5-.2 1-.2 1.6 0 2.4 2.8 4.3 6.2 4.3s6.2-1.9 6.2-4.3c0-.6-.1-1.1-.2-1.6 1.2-1 2-2.5 2-4.1C22 8.5 19.3 6 16 6c-.8 0-1.5.2-2.2.5-.5-.3-1.1-.5-1.8-.5zm-4.5-2L9 7.2C8 7.6 7.2 8.3 6.6 9.2L6 4.8c-.1-.5.3-1 .8-.9.2 0 .5.1.7.1zm9 0c.2 0 .5-.1.7-.1.5-.1.9.4.8.9l-.6 4.4c-.6-.9-1.4-1.6-2.4-2L16.5 4z"/></svg>`
-    ];
-
-    function getPetHeadIcon(seedStr) {
-      let hash = 0;
-      for (let i = 0; i < seedStr.length; i++) {
-        hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      const index = Math.abs(hash) % PET_HEAD_ICONS.length;
-      return `<span class="pet-head-icon">${PET_HEAD_ICONS[index]}</span>`;
-    }
 
     function renderTableHeader(slots) {
       const headerRow = document.getElementById('headerRow');
@@ -437,11 +425,6 @@
             }
           }
           tdSlot.classList.add(status);
-
-          if (status === 'busy') {
-            tdSlot.innerHTML = getPetHeadIcon(room.room_name + slot);
-          }
-
           tr.appendChild(tdSlot);
         });
 
@@ -462,11 +445,13 @@
         }
       }
 
+      // ตรวจสอบและแมปข้อมูลห้องให้ครบทั้ง 10 ห้องเสมอ ป้องกันห้อง 906 หาย[cite: 1]
       const finalRooms = ALL_REQUIRED_ROOMS.map(reqRoom => {
         const found = scrapedRooms.find(r => r.room_name && r.room_name.includes(reqRoom.id));
         if (found) {
           return found;
         } else {
+          // หากห้องถูกปิด Inactive ใน CU NEX ให้ขึ้นว่า (ปรับปรุง) และใส่สถานะปิดบริการ[cite: 1]
           const closedSlots = {};
           activeSlots.forEach(s => closedSlots[s] = 'closed');
           return {
@@ -484,6 +469,7 @@
       syncStatus.textContent = `เชื่อมต่อปกติผ่าน ${sourceLabel} (ดึงข้อมูลอัตโนมัติทุก 15 นาที)`;
     }
 
+    // แคชในเครื่องเบราว์เซอร์ เพื่อให้เปิดหน้าเว็บแล้วตารางขึ้นทันทีใน 0 วินาที[cite: 1]
     const CACHE_KEY = "CUNEX_ROOMS_CACHE";
 
     function loadFromLocalCache() {
@@ -502,10 +488,12 @@
       return false;
     }
 
+    // ดึงข้อมูลแบบ Fast-Cache + Background Sync[cite: 1]
     async function refreshBookingData() {
       const syncStatus = document.getElementById('syncStatus');
       const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzjnkoN0q3jQPkQTMnxmpbn1Tthlg4vSBBY6U68EX60kBHwpl_fHv_6DYMcqAdJ00g7/exec";
 
+      // 1. นำข้อมูลที่จำไว้มาแสดงผลทันทีก่อน ไม่ต้องรอโหลด[cite: 1]
       const hasCache = loadFromLocalCache();
       if (!hasCache) {
         if (window.CUNEX_DATA && window.CUNEX_DATA.rooms && window.CUNEX_DATA.rooms.length > 0) {
@@ -513,6 +501,7 @@
         }
       }
 
+      // 2. ดึงข้อมูลสดจาก Cloud เบื้องหลัง[cite: 1]
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 12000);
@@ -542,6 +531,8 @@
 
     renderTableHeader(defaultTimeSlots);
     refreshBookingData();
+
+    // รีเฟรชตรวจเช็กข้อมูลใหม่ทุก 60 วินาที[cite: 1]
     setInterval(refreshBookingData, 60000);
   </script>
 </body>
