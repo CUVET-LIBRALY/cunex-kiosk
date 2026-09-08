@@ -7,6 +7,7 @@ from playwright.sync_api import sync_playwright
 
 CUNEX_USER = os.environ.get("CUNEX_USER")
 CUNEX_PASS = os.environ.get("CUNEX_PASS")
+BUILDING_ID = os.environ.get("BUILDING_ID")
 GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
 
 LOGIN_URL = "https://cunexbackoffice.azurewebsites.net/Login.aspx"
@@ -68,7 +69,6 @@ def parse_cell_status(cell):
 
     return "free"
 
-
 def run_scraper():
     tz_th = timezone(timedelta(hours=7))
     now_th = datetime.now(tz_th).strftime("%Y-%m-%d %H:%M:%S")
@@ -103,44 +103,68 @@ def run_scraper():
                 
                 login_btn = page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ'], input[value*='Login']").first
                 login_btn.click()
-                print("กดปุ่มเข้าสู่ระบบแล้ว รอเซสชัน 4 วินาที...")
-                time.sleep(4)
+                print("กดปุ่มเข้าสู่ระบบแล้ว รอเซสชัน 5 วินาที...")
+                time.sleep(5)
 
             # ตรงไปที่หน้าค้นหาห้อง
             print(f"กำลังเปิดหน้าค้นหาห้อง: {TARGET_URL}")
             page.goto(TARGET_URL, timeout=45000, wait_until="domcontentloaded")
             time.sleep(3)
-
             print(f"อยู่ที่หน้า: {page.url}")
 
-            # เลือกตึก อาคาร 60 ปี
-            print("กำลังเลือกตึก อาคาร 60 ปี...")
-            page.wait_for_selector("select", timeout=15000)
+            # รอให้ Dropdown โหลดตัวเลือก (options) จนครบ
+            print("กำลังรอตัวเลือกตึกใน Dropdown...")
+            page.wait_for_selector("select option", timeout=20000)
+            time.sleep(2)
+
+            building_selected = False
             selects = page.locator("select").all()
             for sel in selects:
                 options = sel.locator("option").all()
                 for opt in options:
-                    txt = opt.inner_text()
-                    if "60 ปี" in txt or "สัตวแพทย์" in txt:
-                        val = opt.get_attribute("value")
+                    txt = opt.inner_text().strip()
+                    val = opt.get_attribute("value") or ""
+                    
+                    # ตรวจสอบว่าตรงกับ อาคาร 60 ปี หรือค่า BUILDING_ID หรือไม่
+                    match = False
+                    if BUILDING_ID and (val == BUILDING_ID or BUILDING_ID in txt):
+                        match = True
+                    elif "60 ปี" in txt or "สัตวแพทย์" in txt or "60th" in txt:
+                        match = True
+
+                    if match:
                         sel.select_option(val)
                         print(f"เลือกตึกสำเร็จ: {txt} (value={val})")
-                        time.sleep(2)
+                        building_selected = True
+                        # รอเผื่อมี UpdatePanel ทำ PostBack รีโหลด
+                        time.sleep(3)
                         break
+                if building_selected:
+                    break
 
-            # คลิกปุ่มค้นหาที่แท้จริงของ ASP.NET
-            print("กำลังกดปุ่มค้นหา...")
-            search_button = page.locator("input[type='submit'][value*='ค้นหา'], button[type='submit']:has-text('ค้นหา'), input[id*='btnSearch']").first
+            if not building_selected:
+                print("คำเตือน: ไม่พบตัวเลือก 'อาคาร 60 ปี' ใน Dropdown กำลังตรวจสอบรายการที่มี:")
+                for sel in selects:
+                    for opt in sel.locator("option").all()[:5]:
+                        print(f"  - {opt.inner_text().strip()}")
+
+            # คลิกปุ่มค้นหา
+            print("กำลังค้นหาปุ่มค้นหา...")
+            search_button = page.locator("input[type='submit'][value*='ค้นหา'], button[type='submit']:has-text('ค้นหา'), input[id*='btnSearch'], input[name*='btnSearch'], input[value='ค้นหา']").first
             
-            if search_button.count() > 0 and search_button.is_visible():
-                print("พบคลิกปุ่มค้นหา (Submit) กำลังประมวลผล...")
+            if search_button.count() > 0:
+                print(f"พบคลิกปุ่มค้นหา (Submit) กำลังประมวลผล...")
                 search_button.click()
             else:
-                # กรณีหาไม่เจอ ให้สั่ง Submit ฟอร์มโดยตรง
-                print("สั่ง Submit Form โดยตรง...")
-                page.evaluate("() => { if (document.forms[0]) document.forms[0].submit(); }")
+                print("คลิกปุ่มค้นหาทั่วไป...")
+                page.evaluate("""() => {
+                    const btn = Array.from(document.querySelectorAll('input, button, a')).find(el => (el.value && el.value.includes('ค้นหา')) || (el.innerText && el.innerText.includes('ค้นหา')));
+                    if (btn) btn.click();
+                    else if (document.forms[0]) document.forms[0].submit();
+                }""")
 
             # รอผลการโหลดของตาราง
+            print("กำลังรอผลลัพธ์ตาราง...")
             time.sleep(6)
 
             time_slots = [
@@ -149,7 +173,7 @@ def run_scraper():
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            rows = page.locator("table tr").all()
+            rows = page.locator("tr").all()
             print(f"พบแถวตารางทั้งหมด: {len(rows)} แถว")
 
             for row in rows:
