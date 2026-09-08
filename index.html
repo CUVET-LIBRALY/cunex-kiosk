@@ -22,9 +22,9 @@
       --status-free-border: #7dd3fc;
       --status-pending: #fef08a;     /* เหลือง ห้องถูกสนใจ */
       --status-pending-border: #eab308;
-      --status-busy: #fbcfe8;        /* ชมพู ไม่ว่าง / ถูกจอง / ถูกใช้งาน */
+      --status-busy: #fbcfe8;        /* ชมพู ไม่ว่าง / ถูกจอง */
       --status-busy-border: #f43f5e;
-      --status-busy-icon: #be123c;   /* สีเงาสัตว์ชมพูเข้ม */
+      --status-busy-icon: #be123c;   /* สีหัวสัตว์เงาทึบ */
       --status-closed: #e2e8f0;      /* เทา ปิดบริการ */
       --status-closed-border: #94a3b8;
     }
@@ -45,7 +45,6 @@
       flex-direction: column;
     }
 
-    /* Top Control Bar */
     .top-bar {
       background-color: var(--header-bg);
       color: var(--header-text);
@@ -85,7 +84,6 @@
       margin-top: 2px;
     }
 
-    /* Legend Badges */
     .status-legend {
       display: flex;
       gap: 14px;
@@ -116,7 +114,6 @@
     .legend-badge.busy { background: var(--status-busy); border-color: var(--status-busy-border); }
     .legend-badge.closed { background: var(--status-closed); border-color: var(--status-closed-border); }
 
-    /* Library Logo Box */
     .logo-container {
       display: flex;
       align-items: center;
@@ -134,7 +131,6 @@
       display: block;
     }
 
-    /* Main Table Container */
     .table-card {
       background: var(--card-bg);
       border-radius: 12px;
@@ -201,7 +197,6 @@
       color: var(--text-muted);
     }
 
-    /* Time Slot Cells */
     .slot-cell {
       transition: all 0.2s ease;
       cursor: default;
@@ -229,29 +224,21 @@
       font-size: 1.05rem;
     }
 
-    /* ช่อง Busy สำหรับแสดงรูปเงาสัตว์ SVG */
     .slot-cell.busy {
       background-color: var(--status-busy);
     }
 
-    .animal-silhouette {
+    .pet-head-icon {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       line-height: 1;
-      animation: fadeInIcon 0.3s ease-in;
     }
 
-    .animal-silhouette svg {
+    .pet-head-icon svg {
       width: 22px;
       height: 22px;
       fill: var(--status-busy-icon);
-      opacity: 0.9;
-    }
-
-    @keyframes fadeInIcon {
-      from { opacity: 0; transform: scale(0.8); }
-      to { opacity: 0.9; transform: scale(1); }
     }
 
     .slot-cell.closed {
@@ -264,7 +251,6 @@
       font-weight: bold;
     }
 
-    /* Footer status info */
     .footer-bar {
       padding: 8px 18px;
       background: #f8fafc;
@@ -295,7 +281,6 @@
 </head>
 <body>
 
-  <!-- Top Header Bar -->
   <header class="top-bar">
     <div class="system-title">
       <div>
@@ -305,7 +290,6 @@
       <div class="realtime-clock" id="clock">00:00:00</div>
     </div>
 
-    <!-- Status Legend -->
     <div class="status-legend">
       <div class="legend-item">
         <span class="legend-badge free"></span>
@@ -325,13 +309,11 @@
       </div>
     </div>
 
-    <!-- Library Logo Section -->
     <div class="logo-container">
       <img src="https://cdn.phototourl.com/free/2026-09-07-daa6828c-663e-4342-8f19-94a0a1df7678.png" alt="โลโก้ห้องสมุด คณะสัตวแพทยศาสตร์ จุฬาฯ" class="library-logo">
     </div>
   </header>
 
-  <!-- Table Board -->
   <main class="table-card">
     <div class="table-wrapper">
       <table id="scheduleTable">
@@ -354,12 +336,10 @@
     </footer>
   </main>
 
-  <!-- โหลดไฟล์ config.js และ data.js สำหรับใช้งานแบบสำรอง -->
   <script src="config.js"></script>
   <script id="cunexDataSource" src="data.js"></script>
   
   <script>
-    // 1. นำการตั้งค่าจาก config.js มาใส่ในหน้าจอ
     function applyAdminConfig() {
       if (window.DASHBOARD_CONFIG) {
         const cfg = window.DASHBOARD_CONFIG;
@@ -372,7 +352,6 @@
     }
     applyAdminConfig();
 
-    // 2. นาฬิกาและวันที่แบบ Realtime
     function updateClock() {
       const now = new Date();
       document.getElementById('clock').textContent = now.toLocaleTimeString('th-TH', { hour12: false });
@@ -386,14 +365,12 @@
     setInterval(updateClock, 1000);
     updateClock();
 
-    // รายการเวลามาตรฐาน 08:00 - 19:00 น. (ตัดช่วง 19:00 - 20:00 ออก)[cite: 1, 2]
     const defaultTimeSlots = [
       "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
       "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
       "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
     ];
 
-    // รายชื่อห้องประชุมมาตรฐานทั้งหมด 10 ห้อง ของอาคาร 60 ปี
     const ALL_REQUIRED_ROOMS = [
       { id: "905", name: "ห้อง 905", floor: "9", building: "อาคาร 60 ปี" },
       { id: "906", name: "ห้อง 906", floor: "9", building: "อาคาร 60 ปี" },
@@ -407,27 +384,21 @@
       { id: "932", name: "ห้อง 932", floor: "9", building: "อาคาร 60 ปี" }
     ];
 
-    // รูปเวกเตอร์เงาสัตว์แบบ Minimal Silhouettes (รอยเท้า, สุนัข, แมว, กระต่าย, ม้า)
-    const ANIMAL_SILHOUETTES = [
-      // 1. รอยเท้าสัตว์ (Paw)
-      `<svg viewBox="0 0 24 24"><circle cx="4.5" cy="9.5" r="2.5"/><circle cx="9" cy="5.5" r="2.5"/><circle cx="15" cy="5.5" r="2.5"/><circle cx="19.5" cy="9.5" r="2.5"/><path d="M17.34 14.86c-.87-1.02-1.6-1.89-2.48-2.49-.9-.6-2.02-.97-2.86-.97s-1.96.37-2.86.97c-.88.6-1.61 1.47-2.48 2.49-1.25 1.47-1.82 3.14-.64 4.54.9 1.07 2.44 1.6 4.3 1.6h3.36c1.86 0 3.4-.53 4.3-1.6 1.18-1.4.61-3.07-.64-4.54z"/></svg>`,
-      // 2. เงาสุนัข (Dog)
-      `<svg viewBox="0 0 24 24"><path d="M19 12c-.6 0-1.1.2-1.6.5L16 11V7l-3-3H9L6 7v3.5L4.5 12C4.2 12.4 4 13 4 13.6c0 1.3 1 2.4 2.3 2.4h.7v4c0 .6.4 1 1 1h2c.6 0 1-.4 1-1v-4h2v4c0 .6.4 1 1 1h2c.6 0 1-.4 1-1v-4h.7c1.3 0 2.3-1.1 2.3-2.4 0-.6-.2-1.2-.5-1.6h.5c.6 0 1-.4 1-1s-.4-1-1-1z"/></svg>`,
-      // 3. เงาแมว (Cat)
-      `<svg viewBox="0 0 24 24"><path d="M12 13c-1.7 0-3 1.3-3 3v4c0 .6.4 1 1 1h4c.6 0 1-.4 1-1v-4c0-1.7-1.3-3-3-3zm-6-2.5L8.5 7h7L18 10.5V17c0 1.1-.9 2-2 2h-1v-3c0-1.7-1.3-3-3-3s-3 1.3-3 3v3H8c-1.1 0-2-.9-2-2v-6.5zM7.5 4l2.5 3H6.5L7.5 4zm9 0l1 3h-3.5L16.5 4z"/></svg>`,
-      // 4. เงากระต่าย (Rabbit)
-      `<svg viewBox="0 0 24 24"><path d="M18 14c-.6-1.1-1.6-1.9-2.7-2.3.4-.8.7-1.8.7-2.7 0-2.8-1.3-5-3-5-.9 0-1.7.6-2.2 1.5C10.3 4.6 9.5 4 8.5 4 6.8 4 5.5 6.2 5.5 9c0 1 .3 1.9.7 2.7C5.1 12.1 4.1 12.9 3.5 14c-1 1.7-.5 3.9 1.1 4.9.8.5 1.7.8 2.6.8.5 0 1-.1 1.5-.2 1 .4 2.1.5 3.3.5s2.3-.1 3.3-.5c.5.1 1 .2 1.5.2.9 0 1.8-.3 2.6-.8 1.6-1 2.1-3.2 1.2-4.9z"/></svg>`,
-      // 5. เงาม้า (Horse)
-      `<svg viewBox="0 0 24 24"><path d="M20.5 8.5L17 5l-2.5 1.5L13 4 8 7v4l-2 1.5V17l2 1v3h3v-3h2v3h3v-4.5l1.5-2.5 1.5-1.5-.5-1z"/></svg>`
+    // รูปเงาหัวสัตว์ทรงเดียวกับไอคอน 👤 (หัวสุนัข และ หัวแมว)
+    const PET_HEAD_ICONS = [
+      // หัวสุนัข (Dog Silhouette Head)
+      `<svg viewBox="0 0 24 24"><path d="M12 4c-3.3 0-6 2.7-6 6 0 1.9.9 3.6 2.3 4.7-.2.7-.3 1.5-.3 2.3 0 2.2 2.7 4 6 4s6-1.8 6-4c0-.8-.1-1.6-.3-2.3 1.4-1.1 2.3-2.8 2.3-4.7 0-3.3-2.7-6-6-6zm-4.5 3c-.8 0-1.5.7-1.5 1.5v3.2c-.6-.7-1-1.6-1-2.7 0-2.2 1.1-4 2.5-4v2zm9 0v-2c1.4 0 2.5 1.8 2.5 4 0 1.1-.4 2-1 2.7V8.5c0-.8-.7-1.5-1.5-1.5z"/></svg>`,
+      // หัวแมว (Cat Silhouette Head)
+      `<svg viewBox="0 0 24 24"><path d="M12 6c-3.3 0-6 2.5-6 5.5 0 1.6.8 3.1 2 4.1-.1.5-.2 1-.2 1.6 0 2.4 2.8 4.3 6.2 4.3s6.2-1.9 6.2-4.3c0-.6-.1-1.1-.2-1.6 1.2-1 2-2.5 2-4.1C22 8.5 19.3 6 16 6c-.8 0-1.5.2-2.2.5-.5-.3-1.1-.5-1.8-.5zm-4.5-2L9 7.2C8 7.6 7.2 8.3 6.6 9.2L6 4.8c-.1-.5.3-1 .8-.9.2 0 .5.1.7.1zm9 0c.2 0 .5-.1.7-.1.5-.1.9.4.8.9l-.6 4.4c-.6-.9-1.4-1.6-2.4-2L16.5 4z"/></svg>`
     ];
 
-    function getAnimalSilhouette(seedStr) {
+    function getPetHeadIcon(seedStr) {
       let hash = 0;
       for (let i = 0; i < seedStr.length; i++) {
         hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
       }
-      const index = Math.abs(hash) % ANIMAL_SILHOUETTES.length;
-      return `<span class="animal-silhouette">${ANIMAL_SILHOUETTES[index]}</span>`;
+      const index = Math.abs(hash) % PET_HEAD_ICONS.length;
+      return `<span class="pet-head-icon">${PET_HEAD_ICONS[index]}</span>`;
     }
 
     function renderTableHeader(slots) {
@@ -467,9 +438,8 @@
           }
           tdSlot.classList.add(status);
 
-          // ถ้าสถานะเป็น busy (ไม่ว่าง/ถูกจอง) ให้แสดงเงาสัตว์ SVG
           if (status === 'busy') {
-            tdSlot.innerHTML = getAnimalSilhouette(room.room_name + slot);
+            tdSlot.innerHTML = getPetHeadIcon(room.room_name + slot);
           }
 
           tr.appendChild(tdSlot);
@@ -492,7 +462,6 @@
         }
       }
 
-      // แมปรายชื่อห้องให้ครบทั้ง 10 ห้องเสมอ ป้องกันห้อง 906 หาย
       const finalRooms = ALL_REQUIRED_ROOMS.map(reqRoom => {
         const found = scrapedRooms.find(r => r.room_name && r.room_name.includes(reqRoom.id));
         if (found) {
@@ -515,7 +484,6 @@
       syncStatus.textContent = `เชื่อมต่อปกติผ่าน ${sourceLabel} (ดึงข้อมูลอัตโนมัติทุก 15 นาที)`;
     }
 
-    // แคชในเครื่อง เพื่อให้เปิดหน้าเว็บแล้วขึ้นทันทีใน 0 วินาที
     const CACHE_KEY = "CUNEX_ROOMS_CACHE";
 
     function loadFromLocalCache() {
@@ -534,12 +502,10 @@
       return false;
     }
 
-    // ดึงข้อมูลแบบ Fast-Cache + Background Sync
     async function refreshBookingData() {
       const syncStatus = document.getElementById('syncStatus');
       const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzjnkoN0q3jQPkQTMnxmpbn1Tthlg4vSBBY6U68EX60kBHwpl_fHv_6DYMcqAdJ00g7/exec";
 
-      // 1. นำข้อมูลในเครื่องมาแสดงผลทันทีก่อน
       const hasCache = loadFromLocalCache();
       if (!hasCache) {
         if (window.CUNEX_DATA && window.CUNEX_DATA.rooms && window.CUNEX_DATA.rooms.length > 0) {
@@ -547,7 +513,6 @@
         }
       }
 
-      // 2. แอบดึงข้อมูลสดจาก Cloud มาอัปเดตเบื้องหลัง
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 12000);
@@ -577,8 +542,6 @@
 
     renderTableHeader(defaultTimeSlots);
     refreshBookingData();
-
-    // ตรวจสอบข้อมูลใหม่ทุก 60 วินาที[cite: 1, 2]
     setInterval(refreshBookingData, 60000);
   </script>
 </body>
