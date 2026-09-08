@@ -1,162 +1,203 @@
 import os
 import json
-import re
-from datetime import datetime
-from playwright.sync_api import sync_playwright
+import time
 import requests
+from datetime import datetime
+import pytz
+from playwright.sync_api import sync_playwright
 
-# ==========================================
-# 1. รับค่า Credentials จาก GitHub Secrets
-# ==========================================
-CUNEX_USER = os.getenv("CUNEX_USER", "bhathaic")
-CUNEX_PASS = os.getenv("CUNEX_PASS", "0815611613")
-BUILDING_ID = os.getenv("BUILDING_ID", "3")
-GAS_WEBHOOK_URL = os.getenv("GAS_WEBHOOK_URL", "https://script.google.com/macros/s/AKfycbzjnkoN0q3jQPkQTMnxmpbn1Tthlg4vSBBY6U68EX60kBHwpl_fHv_6DYMcqAdJ00g7/exec")
+# อ่านค่าคอนฟิกจาก Environment Variables (GitHub Secrets)
+CUNEX_USER = os.environ.get("CUNEX_USER")
+CUNEX_PASS = os.environ.get("CUNEX_PASS")
+BUILDING_ID = os.environ.get("BUILDING_ID", "3")
+GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
 
-THAI_MONTHS = [
-    "", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
-    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
-]
+TARGET_URL = f"https://cunex.chula.ac.th/admin/booking/table?building_id={BUILDING_ID}"
 
-def get_thai_date_now():
-    now = datetime.now()
-    thai_year = now.year + 543
-    thai_month = THAI_MONTHS[now.month]
-    return f"{now.day} {thai_month} {thai_year}"
+def parse_cell_status(cell):
+    """
+    ฟังก์ชันตรวจสอบสถานะจาก Cell (td) โดยตรง
+    อ่านค่าสีที่แท้จริงจาก Browser Rendered Style ทั้ง td และ element ภายใน
+    """
+    try:
+        # อ่านค่าสีพื้นหลังที่แท้จริงที่แสดงผลบนหน้าจอ
+        colors = cell.evaluate("""
+            el => {
+                const getEffectiveBg = (target) => {
+                    let cur = target;
+                    while (cur && cur !== document.body) {
+                        const style = window.getComputedStyle(cur);
+                        const bg = style.backgroundColor;
+                        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+                            return bg;
+                        }
+                        const attrBg = cur.getAttribute('bgcolor');
+                        if (attrBg) return attrBg;
+                        cur = cur.parentElement;
+                    }
+                    return '';
+                };
 
-def parse_status_from_rgb(rgb_str):
-    if not rgb_str:
-        return 'free'
-    nums = re.findall(r'\d+', rgb_str)
-    if len(nums) < 3:
-        return 'free'
-    r, g, b = int(nums[0]), int(nums[1]), int(nums[2])
+                const tdBg = window.getComputedStyle(el).backgroundColor;
+                const pBg = el.querySelector('p') ? window.getComputedStyle(el.querySelector('p')).backgroundColor : '';
+                const effBg = getEffectiveBg(el);
+                const classStr = el.className + ' ' + (el.querySelector('p') ? el.querySelector('p').className : '');
+                const styleStr = (el.getAttribute('style') || '') + ' ' + (el.getAttribute('bgcolor') || '');
 
-    if r > 200 and g > 200 and b < 100:
-        return 'pending'
-    if r > 200 and g < 70 and b < 70:
-        return 'busy'
-    if r > 180 and g > 60 and b > 80 and g < 180:
-        return 'busy'
-    if g > 100 and r < 120:
-        return 'free'
-    if abs(r - g) < 25 and abs(g - b) < 25 and r < 200:
-        return 'closed'
-    return 'free'
+                return {
+                    tdBg: tdBg || '',
+                    pBg: pBg || '',
+                    effBg: effBg || '',
+                    classStr: classStr.toLowerCase(),
+                    styleStr: styleStr.toLowerCase()
+                };
+            }
+        """)
 
-def scrape_reservation():
-    thai_date_str = get_thai_date_now()
-    print(f"[*] เริ่มดึงข้อมูลการจองสำหรับวันที่: {thai_date_str}")
+        combined_text = f"{colors['tdBg']} {colors['pBg']} {colors['effBg']} {colors['classStr']} {colors['styleStr']}".lower()
+
+        # 1. ตรวจสอบเงื่อนไขสีเทา (ปิดทำการ)
+        gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "#888", "#999", "#aaa", "#4a4a4a", "#343a40", "disabled", "closed", "lock"]
+        if any(k in combined_text for k in gray_keywords):
+            return "closed"
+
+        # ตรวจสอบค่า RGB ทุกตัวที่ดึงมาได้
+        for bg in [colors['tdBg'], colors['pBg'], colors['effBg']]:
+            if "rgb" in bg:
+                nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
+                if len(nums) >= 3:
+                    r, g, b = nums[0], nums[1], nums[2]
+                    # สีเทา: R, G, B ค่าใกล้เคียงกันมาก (ความต่างไม่เกิน 25) และไม่ใช่สีขาวสว่าง
+                    if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
+                        return "closed"
+                    
+                    # สีแดง / ชมพู (จองแล้ว)
+                    if r > g + 40 and r > b:
+                        return "busy"
+
+                    # สีเหลือง (สนใจ/รออนุมัติ)
+                    if r > 160 and g > 160 and b < 100:
+                        return "pending"
+
+                    # สีเขียว (ว่าง)
+                    if g > r + 30 and g > b + 30:
+                        return "free"
+
+        # ตรวจสอบจากชื่อสีพื้นฐาน
+        if any(c in combined_text for c in ["red", "#ff0000", "#dc3545"]):
+            return "busy"
+        if any(c in combined_text for c in ["yellow", "#ffff00", "#ffc107"]):
+            return "pending"
+        if any(c in combined_text for c in ["green", "#008000", "#28a745", "#22c55e"]):
+            return "free"
+
+    except Exception as e:
+        print(f"Error checking cell: {e}")
+
+    return "free"
+
+
+def run_scraper():
+    tz = pytz.timezone("Asia/Bangkok")
+    now_th = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{now_th}] เริ่มต้นการทำงาน CU NEX Scraper...")
+
+    scraped_data = {
+        "updated_at": now_th,
+        "rooms": []
+    }
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
         page = context.new_page()
 
         try:
-            print("[1/5] กำลังเข้าสู่ระบบ...")
-            page.goto("https://cunexbackoffice.azurewebsites.net/login.aspx", timeout=60000)
-            page.fill("input[name*='txtUserName'], input[type='text']", CUNEX_USER)
-            page.fill("input[name*='txtPassword'], input[type='password']", CUNEX_PASS)
-            page.click("input[type='submit'], button[type='submit']")
-            page.wait_for_load_state("domcontentloaded")
+            print("กำลังเปิดหน้าเว็บไซต์ CU NEX...")
+            page.goto(TARGET_URL, timeout=45000)
+            page.wait_for_load_state("networkidle")
 
-            print("[2/5] กำลังเปิดหน้า SearchReservation...")
-            page.goto("https://cunexbackoffice.azurewebsites.net/SearchReservation.aspx", timeout=60000)
-            page.wait_for_load_state("domcontentloaded")
+            # ตรวจสอบการเข้าสู่ระบบ
+            if "login" in page.url.lower() or page.locator("input[type='password']").count() > 0:
+                print("พบหน้าเข้าสู่ระบบ กำลังล็อกอิน...")
+                if page.locator("input[name*='user'], input[type='text'], input[type='email']").count() > 0:
+                    page.locator("input[name*='user'], input[type='text'], input[type='email']").first.fill(CUNEX_USER)
+                if page.locator("input[type='password']").count() > 0:
+                    page.locator("input[type='password']").first.fill(CUNEX_PASS)
+                
+                submit_btn = page.locator("button[type='submit'], input[type='submit'], .btn-login, button:has-text('เข้าสู่ระบบ')")
+                if submit_btn.count() > 0:
+                    submit_btn.first.click()
+                    page.wait_for_load_state("networkidle")
+                    time.sleep(3)
 
-            print("[3/5] กรอกวันที่และเลือกอาคาร...")
-            page.wait_for_selector("select[name*='ddlBuilding']", timeout=20000)
-            page.select_option("select[name*='ddlBuilding']", BUILDING_ID)
+                page.goto(TARGET_URL, timeout=45000)
+                page.wait_for_load_state("networkidle")
 
-            date_input = page.locator("input[name*='txtDateReserv']")
-            date_input.fill(thai_date_str)
+            print("กำลังค้นหาตาราง...")
+            page.wait_for_selector("table", timeout=20000)
+            time.sleep(2)
 
-            print("[4/5] กำลังกดค้นหา...")
-            search_btn = page.locator("a[id*='searchLinkButton']")
-            search_btn.dispatch_event("click")
+            # กำหนดช่วงเวลามาตรฐาน
+            time_slots = [
+                "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
+                "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
+                "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
+            ]
 
-            page.wait_for_timeout(5000)
-            page.wait_for_load_state("domcontentloaded")
+            # อ่านแถวห้องประชุม (มองหา tr ที่มี id MainContentPlaceHolder)
+            rows = page.locator("table tr[id*='MainContentPlaceHolder']").all()
+            if not rows:
+                rows = page.locator("table tr").all()[1:]
 
-            print("[5/5] กำลังอ่านข้อมูลตาราง...")
-            tables = page.locator("table").all()
-            target_table = None
-            for tbl in tables:
-                txt = tbl.inner_text()
-                if "08:00" in txt and "09:00" in txt:
-                    target_table = tbl
-                    break
+            for row in rows:
+                cells = row.locator("td").all()
+                if len(cells) <= 1:
+                    continue
 
-            rooms_data = []
-            if target_table:
-                rows = target_table.locator("tr").all()
-                header_idx = -1
-                for idx, r in enumerate(rows):
-                    if "08:00" in r.inner_text():
-                        header_idx = idx
-                        break
+                room_name = cells[0].inner_text().strip()
+                if not any(char.isdigit() for char in room_name):
+                    continue
 
-                if header_idx != -1:
-                    header_cells = rows[header_idx].locator("th, td").all()
-                    time_slots = []
-                    for h in header_cells[1:]:
-                        t_text = h.inner_text().strip()
-                        if t_text:
-                            time_slots.append(t_text)
+                room_slots = {}
+                # เริ่มอ่าน cell ที่ 1 เป็นต้นไป (cell 0 คือชื่อห้อง)
+                for idx, slot_name in enumerate(time_slots):
+                    cell_idx = idx + 1
+                    if cell_idx < len(cells):
+                        cell = cells[cell_idx]
+                        status = parse_cell_status(cell)
+                        room_slots[slot_name] = status
 
-                    for r in rows[header_idx + 1:]:
-                        cells = r.locator("td").all()
-                        if len(cells) <= len(time_slots):
-                            continue
+                scraped_data["rooms"].append({
+                    "room_name": room_name,
+                    "floor": "9",
+                    "building": "อาคาร 60 ปี",
+                    "slots": room_slots
+                })
 
-                        raw_name = cells[0].inner_text().strip()
-                        if not raw_name or "ตึก" in raw_name or "อาคาร" in raw_name:
-                            continue
-
-                        lines = [line.strip() for line in raw_name.splitlines() if line.strip()]
-                        floor = ""
-                        room_name = raw_name
-                        if len(lines) >= 2:
-                            floor = lines[0]
-                            room_name = " ".join(lines[1:])
-                        elif raw_name.startswith("9 "):
-                            floor = "9"
-                            room_name = raw_name[2:].strip()
-
-                        slots = {}
-                        for idx, slot_name in enumerate(time_slots):
-                            cell_idx = idx + 1
-                            if cell_idx < len(cells):
-                                bg_color = cells[cell_idx].evaluate("el => window.getComputedStyle(el).backgroundColor")
-                                slots[slot_name] = parse_status_from_rgb(bg_color)
-
-                        rooms_data.append({
-                            "floor": floor,
-                            "room_name": room_name,
-                            "building": "อาคาร 60 ปี",
-                            "slots": slots
-                        })
-
-            print(f"[+] อ่านข้อมูลสำเร็จ ได้ทั้งหมด {len(rooms_data)} ห้อง")
-            
-            output_payload = {
-                "date": thai_date_str,
-                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "rooms": rooms_data
-            }
-
-            if GAS_WEBHOOK_URL:
-                res = requests.post(GAS_WEBHOOK_URL, json=output_payload, timeout=20)
-                print(f"[✓] ส่งข้อมูลเข้า Google Apps Script สำเร็จ: {res.text}")
-            else:
-                print("[!] ไม่พบ URL ของ GAS Webhook")
+            print(f"ดึงข้อมูลเรียบร้อยทั้งหมด {len(scraped_data['rooms'])} ห้อง")
 
         except Exception as e:
-            print(f"[!] เกิดข้อผิดพลาด: {e}")
-            raise e
+            print(f"เกิดข้อผิดพลาดขณะ Scrape: {e}")
         finally:
             browser.close()
 
+    # บันทึก data.js สำหรับ Fast Cache
+    try:
+        with open("data.js", "w", encoding="utf-8") as f:
+            f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
+        print("บันทึกข้อมูลลง data.js สำเร็จ")
+    except Exception as e:
+        print(f"บันทึก data.js ล้มเหลว: {e}")
+
+    # ส่งเข้า Google Apps Script
+    if GAS_WEBHOOK_URL:
+        try:
+            print("กำลังส่งข้อมูลเข้า Google Sheets...")
+            res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=20)
+            print(f"สถานะส่งข้อมูล GAS: {res.status_code} - {res.text}")
+        except Exception as e:
+            print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
+
 if __name__ == "__main__":
-    scrape_reservation()
+    run_scraper()
