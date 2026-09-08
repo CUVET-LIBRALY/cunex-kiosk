@@ -2,8 +2,7 @@ import os
 import json
 import time
 import requests
-from datetime import datetime
-import pytz
+from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright
 
 # อ่านค่าคอนฟิกจาก Environment Variables (GitHub Secrets)
@@ -26,17 +25,17 @@ def parse_cell_status(cell):
         class_attr = (cell.get_attribute("class") or "").lower()
         bgcolor_attr = (cell.get_attribute("bgcolor") or "").lower()
 
-        # อ่าน computed background-color ผ่าน script สั้นๆ ปลอดภัย
+        # อ่าน computed background-color จากเบราว์เซอร์
         bg_color = cell.evaluate("el => window.getComputedStyle(el).backgroundColor || ''").lower()
 
         combined_info = f"{style_attr} {class_attr} {bgcolor_attr} {bg_color}"
 
-        # 1. ตรวจสอบสีเทา / ปิดทำการ
+        # 1. ตรวจสอบเงื่อนไขสีเทา (ปิดทำการ)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "#888", "#999", "#aaa", "#4a4a4a", "#343a40", "disabled", "closed", "lock"]
         if any(k in combined_info for k in gray_keywords):
             return "closed"
 
-        # ตรวจสอบค่า RGB ของสีเทา (ค่า R, G, B ใกล้เคียงกัน และไม่ใช่สีขาว/ดำ)
+        # ตรวจสอบค่า RGB สำหรับสีเทา
         if "rgb" in bg_color:
             nums = [int(n.strip()) for n in bg_color.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
             if len(nums) >= 3:
@@ -65,8 +64,9 @@ def parse_cell_status(cell):
 
 
 def run_scraper():
-    tz = pytz.timezone("Asia/Bangkok")
-    now_th = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+    # คำนวณเวลาไทย UTC+7 โดยไม่ต้องพึ่งพาไลบรารีภายนอก
+    tz_th = timezone(timedelta(hours=7))
+    now_th = datetime.now(tz_th).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now_th}] เริ่มต้นการทำงาน CU NEX Scraper...")
 
     scraped_data = {
@@ -111,7 +111,6 @@ def run_scraper():
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            # ค้นหาแถวของห้องประชุม
             rows = page.locator("table tr").all()
             print(f"พบแถวทั้งหมดในตาราง {len(rows)} แถว")
 
@@ -121,7 +120,6 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                # กรองเอาเฉพาะแถวที่มีตัวเลขห้อง เช่น 905, 907
                 if not any(char.isdigit() for char in room_name):
                     continue
 
