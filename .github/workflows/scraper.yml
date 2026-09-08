@@ -2,38 +2,44 @@ name: CU NEX Auto Scraper
 
 on:
   schedule:
-    # 1) รอบเช้าตรู่ก่อนเปิดบริการ: 07:30 น. และ 07:45 น. (00:30, 00:45 UTC)
-    - cron: '30,45 0 * * 1-5'
-    # 2) ช่วงเวลาให้บริการ: ทุก 15 นาที ตั้งแต่ 08:00 - 19:00 น. (01:00 - 12:00 UTC)
-    - cron: '*/15 1-12 * * 1-5'
+    # รันอัตโนมัติทุก 15 นาที
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # ปุ่มกดรันด้วยตนเอง
 
-  # ให้กดสั่งรันด้วยมือได้
-  workflow_dispatch:
+permissions:
+  contents: write # ให้สิทธิ์บันทึกไฟล์ data.js ลง Repository
 
 jobs:
   scrape-and-sync:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
+      - name: ตรวจสอบที่เก็บข้อมูล (Checkout)
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: ติดตั้ง Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
-      - name: Install dependencies
+      - name: ติดตั้งส่วนประกอบที่จำเป็น (Dependencies & Playwright)
         run: |
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install playwright requests
           playwright install --with-deps chromium
 
-      - name: Run Scraper
+      - name: เรียกใช้ Scraper
         env:
           CUNEX_USER: ${{ secrets.CUNEX_USER }}
           CUNEX_PASS: ${{ secrets.CUNEX_PASS }}
-          BUILDING_ID: "3"
+          BUILDING_ID: ${{ secrets.BUILDING_ID }}
           GAS_WEBHOOK_URL: ${{ secrets.GAS_WEBHOOK_URL }}
         run: |
           python cunex_scraper_cloud.py
+
+      - name: บันทึกและส่ง data.js ขึ้น GitHub อัตโนมัติ
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.js
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update data.js [skip ci]" && git push)
