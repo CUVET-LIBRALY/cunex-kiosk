@@ -9,6 +9,7 @@ CUNEX_USER = os.environ.get("CUNEX_USER")
 CUNEX_PASS = os.environ.get("CUNEX_PASS")
 GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
 
+LOGIN_URL = "https://cunexbackoffice.azurewebsites.net/Login.aspx"
 TARGET_URL = "https://cunexbackoffice.azurewebsites.net/SearchReservation.aspx"
 
 def parse_cell_status(cell):
@@ -32,7 +33,7 @@ def parse_cell_status(cell):
         p_bg = info.get('pBg', '').lower()
         combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
 
-        # ตรวจสอบสีเทา (ปิดทำการ)
+        # เช็คสีเทา (ปิดทำการ)
         gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
         if any(k in combined for k in gray_keywords):
             return "closed"
@@ -42,16 +43,16 @@ def parse_cell_status(cell):
                 nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
                 if len(nums) >= 3:
                     r, g, b = nums[0], nums[1], nums[2]
-                    # สีเทา
+                    # เทา
                     if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
                         return "closed"
-                    # สีแดง / ชมพู (ถูกจอง)
+                    # แดง / ชมพู (จองแล้ว)
                     if r > g + 40 and r > b:
                         return "busy"
-                    # สีเหลือง (รอนุมัติ/สนใจ)
+                    # เหลือง (สนใจ/รอนุมัติ)
                     if r > 160 and g > 160 and b < 100:
                         return "pending"
-                    # สีเขียว (ว่าง)
+                    # เขียว (ว่าง)
                     if g > r + 30 and g > b + 30:
                         return "free"
 
@@ -87,11 +88,11 @@ def run_scraper():
         page = context.new_page()
 
         try:
-            print(f"กำลังเปิดระบบ CU NEX: {TARGET_URL}")
-            page.goto(TARGET_URL, timeout=60000, wait_until="networkidle")
+            print(f"กำลังเปิดเข้าระบบ CU NEX: {LOGIN_URL}")
+            page.goto(LOGIN_URL, timeout=45000, wait_until="domcontentloaded")
             time.sleep(2)
 
-            # ตรวจสอบการเข้าสู่ระบบ
+            # ตรวจสอบการกรอกรหัสผ่าน
             if page.locator("input[type='password']").count() > 0:
                 print("พบหน้าเข้าสู่ระบบ กำลังกรอกรหัส...")
                 user_input = page.locator("input[type='text'], input[name*='User'], input[name*='user'], input[id*='User']").first
@@ -100,24 +101,21 @@ def run_scraper():
                 user_input.fill(CUNEX_USER or "")
                 pass_input.fill(CUNEX_PASS or "")
                 
-                # กดปุ่มเข้าสู่ระบบ
                 login_btn = page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ'], input[value*='Login']").first
                 login_btn.click()
-                print("กดปุ่มเข้าสู่ระบบแล้ว รอเปลี่ยนหน้าสมบูรณ์...")
-                
-                # รอให้ระบบข้ามไปยังหน้า SearchReservation
-                page.wait_for_url("**/SearchReservation.aspx*", timeout=30000)
-                page.wait_for_load_state("networkidle")
-                time.sleep(3)
+                print("กดปุ่มเข้าสู่ระบบแล้ว รอเซสชัน 4 วินาที...")
+                time.sleep(4)
+
+            # บังคับเปิดตรงไปที่หน้า SearchReservation.aspx ทันที
+            print(f"กำลังเปิดหน้าค้นหาห้อง: {TARGET_URL}")
+            page.goto(TARGET_URL, timeout=45000, wait_until="domcontentloaded")
+            time.sleep(3)
 
             print(f"อยู่ที่หน้า: {page.url}")
 
-            # ค้นหา Dropdown เลือกอาคาร/สถานที่
+            # เลือกตึกอาคาร 60 ปี
             print("กำลังเลือกตึก อาคาร 60 ปี...")
-            page.wait_for_selector("select", timeout=15000)
             selects = page.locator("select").all()
-            building_selected = False
-            
             for sel in selects:
                 options = sel.locator("option").all()
                 for opt in options:
@@ -126,33 +124,27 @@ def run_scraper():
                         val = opt.get_attribute("value")
                         sel.select_option(val)
                         print(f"เลือกตึกสำเร็จ: {txt}")
-                        building_selected = True
                         time.sleep(2)
                         break
-                if building_selected:
-                    break
 
-            # คลิกปุ่มค้นหา (Search)
-            print("กำลังค้นหาปุ่มค้นหา...")
+            # คลิกปุ่มค้นหา (ปุ่มสีชมพู)
+            print("กำลังกดปุ่มค้นหา...")
             search_btn = page.locator("input[value*='ค้นหา'], button:has-text('ค้นหา'), input[id*='btnSearch'], input[id*='Search']").first
             if search_btn.count() > 0:
-                print("พบคลิกปุ่มค้นหา กำลังดึงข้อมูล...")
                 search_btn.click()
-                page.wait_for_load_state("networkidle")
-                time.sleep(4)
+                print("กดปุ่มค้นหาแล้ว รอโหลดตาราง...")
+                time.sleep(5)
             else:
-                print("ไม่พบปุ่มค้นหา ดำเนินการอ่านข้อมูลตารางทันที...")
+                print("ไม่เจอปุ่มค้นหา อ่านข้อมูลจากหน้าทันที")
 
-            # สแกนตารางผลการจอง
             time_slots = [
                 "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
                 "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
                 "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
             ]
 
-            page.wait_for_selector("table tr", timeout=20000)
-            rows = page.locator("table tr").all()
-            print(f"พบแถวตารางทั้งหมด: {len(rows)} แถว")
+            rows = page.locator("tr").all()
+            print(f"พบแถว tr ทั้งหมด: {len(rows)} แถว")
 
             for row in rows:
                 cells = row.locator("td").all()
@@ -160,7 +152,7 @@ def run_scraper():
                     continue
 
                 room_name = cells[0].inner_text().strip()
-                # ตรวจสอบชื่อแถวที่เป็นห้อง (เช่น 9 ห้อง 905)
+                # กรองเฉพาะชื่อห้อง เช่น 9 ห้อง 905
                 if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
                     continue
 
@@ -186,7 +178,7 @@ def run_scraper():
         finally:
             browser.close()
 
-    # 1. เขียนไฟล์สำรอง data.js
+    # 1. เขียน data.js
     try:
         with open("data.js", "w", encoding="utf-8") as f:
             f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
@@ -194,7 +186,7 @@ def run_scraper():
     except Exception as e:
         print(f"บันทึก data.js ไม่สำเร็จ: {e}")
 
-    # 2. ส่งข้อมูลเข้า Google Sheets
+    # 2. ส่งเข้า Google Sheets
     if GAS_WEBHOOK_URL and len(scraped_data["rooms"]) > 0:
         try:
             print("กำลังส่งข้อมูลเข้า Google Sheets...")
