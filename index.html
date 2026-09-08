@@ -3,537 +3,415 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ตารางแสดงสถานะการจองห้อง - อาคาร 60 ปี คณะสัตวแพทยศาสตร์ จุฬาฯ</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <title>ตารางสถานะห้องประชุม - ห้องสมุดฯ อาคาร 60 ปี คณะสัตวแพทยศาสตร์ จุฬาฯ</title>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-main: #edf2f7;
-      --card-bg: #ffffff;
-      --header-bg: #486581; /* ฟ้าหม่น Slate Blue */
-      --header-text: #ffffff;
-      --border-color: #cbd5e1;
-      --text-dark: #102a43;
-      --text-muted: #627d98;
-      
-      /* Status Colors */
-      --status-free: #e0f2fe;        /* ฟ้าอ่อน ว่าง */
-      --status-free-border: #7dd3fc;
-      --status-pending: #fef08a;     /* เหลือง ห้องถูกสนใจ */
-      --status-pending-border: #eab308;
-      --status-busy: #fbcfe8;        /* ชมพู ไม่ว่าง / ถูกจอง / ถูกใช้งาน */
-      --status-busy-border: #f43f5e;
-      --status-closed: #e2e8f0;      /* เทา ปิดบริการ */
-      --status-closed-border: #94a3b8;
+      --primary-navy: #1e3a5f;
+      --header-bg: #355375;
+      --border-color: #d0dbe5;
+      --bg-free: #e1f5fe;
+      --color-free: #0288d1;
+      --bg-busy: #fce4ec;
+      --color-busy: #c2185b;
+      --bg-pending: #fffde7;
+      --color-pending: #fbc02d;
+      --bg-closed: #f5f5f5;
+      --color-closed: #9e9e9e;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: 'Sarabun', sans-serif;
+      user-select: none; /* ป้องกันการคลุมดำบนจอสัมผัส */
+      -webkit-user-select: none;
     }
 
     body {
-      background-color: var(--bg-main);
-      color: var(--text-dark);
-      padding: 14px;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+      font-family: 'Sarabun', sans-serif;
+      background-color: #f8fafc;
+      color: #333;
+      padding: 12px 18px;
     }
 
-    /* Top Control Bar */
-    .top-bar {
-      background-color: var(--header-bg);
-      color: var(--header-text);
+    /* แถบหัวเรื่องด้านบน */
+    .header-panel {
+      background: linear-gradient(135deg, #2b4c7e 0%, #1e3a5f 100%);
+      color: white;
       border-radius: 12px;
-      padding: 12px 20px;
+      padding: 12px 24px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      box-shadow: 0 4px 12px rgba(16, 42, 67, 0.12);
+      justify-content: space-between;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
       margin-bottom: 12px;
     }
 
-    .system-title {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .system-title h1 {
-      font-size: 1.35rem;
+    .title-group h1 {
+      font-size: 20px;
       font-weight: 700;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.2px;
     }
 
-    .realtime-clock {
-      font-size: 1.5rem;
-      font-weight: 700;
-      background: rgba(255, 255, 255, 0.18);
-      padding: 4px 12px;
-      border-radius: 8px;
-      letter-spacing: 1px;
-    }
-
-    .date-display {
-      font-size: 0.9rem;
-      color: #d9e2ec;
+    .title-group p {
+      font-size: 14px;
+      opacity: 0.9;
       margin-top: 2px;
     }
 
-    /* Legend Badges */
-    .status-legend {
+    .clock-badge {
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 6px 16px;
+      border-radius: 8px;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .legend-group {
       display: flex;
-      gap: 14px;
       align-items: center;
-      background: rgba(255, 255, 255, 0.1);
-      padding: 6px 14px;
-      border-radius: 30px;
+      gap: 12px;
+      font-size: 13px;
     }
 
     .legend-item {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 0.85rem;
-      font-weight: 500;
     }
 
-    .legend-badge {
-      display: inline-block;
-      width: 18px;
-      height: 18px;
-      border-radius: 4px;
-      border: 1.5px solid;
+    .legend-box {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
     }
 
-    .legend-badge.free { background: var(--status-free); border-color: var(--status-free-border); }
-    .legend-badge.pending { background: var(--status-pending); border-color: var(--status-pending-border); }
-    .legend-badge.busy { background: var(--status-busy); border-color: var(--status-busy-border); }
-    .legend-badge.closed { background: var(--status-closed); border-color: var(--status-closed-border); }
-
-    /* Library Logo Box */
-    .logo-container {
-      display: flex;
-      align-items: center;
-      background: #ffffff;
-      padding: 4px 10px;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-      height: 52px;
+    .logo-container img {
+      height: 38px;
+      background: white;
+      padding: 3px 8px;
+      border-radius: 6px;
     }
 
-    .library-logo {
-      height: 44px;
-      width: auto;
-      object-fit: contain;
-      display: block;
-    }
-
-    /* Main Table Container */
-    .table-card {
-      background: var(--card-bg);
-      border-radius: 12px;
-      box-shadow: 0 4px 16px rgba(16, 42, 67, 0.06);
-      overflow: hidden;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .table-wrapper {
+    /* โครงสร้างตาราง */
+    .table-container {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
       overflow-x: auto;
-      overflow-y: auto;
-      flex: 1;
+      border: 1px solid var(--border-color);
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
       text-align: center;
-      table-layout: fixed;
     }
 
     th, td {
       border: 1px solid var(--border-color);
-      padding: 10px 4px;
-      font-size: 0.85rem;
+      padding: 9px 4px;
+      font-size: 13px;
     }
 
     th {
       background-color: #f1f5f9;
-      color: #334e68;
+      color: #334155;
       font-weight: 600;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      font-size: 0.82rem;
+      white-space: nowrap;
     }
 
-    th.room-col-head {
-      width: 130px;
-      min-width: 130px;
-      left: 0;
-      z-index: 20;
-      background-color: #e2e8f0;
-    }
-
-    td.room-name-cell {
-      position: sticky;
-      left: 0;
-      background-color: #ffffff;
-      font-weight: 600;
-      color: #102a43;
+    .col-room {
+      width: 140px;
       text-align: left;
       padding-left: 12px;
-      z-index: 5;
-      box-shadow: 2px 0 4px rgba(0,0,0,0.04);
+      background-color: #f8fafc;
     }
 
-    .room-desc {
-      display: block;
-      font-size: 0.72rem;
-      font-weight: 400;
-      color: var(--text-muted);
+    .room-title {
+      font-weight: 700;
+      color: #1e293b;
+      font-size: 13px;
     }
 
-    /* Time Slot Cells */
-    .slot-cell {
-      transition: all 0.2s ease;
-      cursor: default;
-      user-select: none;
+    .room-sub {
+      font-size: 11px;
+      color: #64748b;
     }
 
-    .slot-cell.free {
-      background-color: var(--status-free);
-      color: #0284c7;
-    }
-    .slot-cell.free::after {
-      content: "◯";
-      font-size: 1.15rem;
-      font-weight: bold;
+    /* สถานะของห้องในแต่ละช่วงเวลา */
+    .status-free {
+      background-color: var(--bg-free);
+      color: var(--color-free);
     }
 
-    .slot-cell.pending {
-      background-color: var(--status-pending);
-      color: #a16207;
-    }
-    .slot-cell.pending::after {
-      content: "⏳";
-      font-size: 1rem;
+    .status-busy {
+      background-color: var(--bg-busy);
+      color: var(--color-busy);
     }
 
-    /* ช่อง Busy กลับมาใช้ไอคอน 👤 แบบดั้งเดิม */
-    .slot-cell.busy {
-      background-color: var(--status-busy);
-      color: #be123c;
-    }
-    .slot-cell.busy::after {
-      content: "👤";
-      font-size: 1rem;
+    .status-pending {
+      background-color: var(--bg-pending);
+      color: var(--color-pending);
     }
 
-    .slot-cell.closed {
-      background-color: var(--status-closed);
-      color: #94a3b8;
-    }
-    .slot-cell.closed::after {
-      content: "—";
-      font-size: 1.15rem;
-      font-weight: bold;
+    .status-closed {
+      background-color: var(--bg-closed);
+      color: var(--color-closed);
     }
 
-    /* Footer status info */
+    .icon-cell {
+      font-size: 17px;
+      line-height: 1;
+      display: inline-block;
+    }
+
+    /* ไฮไลต์คอลัมน์ช่วงเวลาปัจจุบัน */
+    .current-time-col {
+      background-color: rgba(255, 235, 59, 0.2) !important;
+      position: relative;
+    }
+
+    th.current-time-col {
+      background-color: #fef08a !important;
+      color: #854d0e !important;
+      font-weight: 700;
+      border-bottom: 2px solid #eab308;
+    }
+
+    /* แถบสถานะด้านล่าง */
     .footer-bar {
-      padding: 8px 18px;
-      background: #f8fafc;
-      border-top: 1px solid var(--border-color);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.8rem;
-      color: var(--text-muted);
+      margin-top: 12px;
+      padding: 0 6px;
+      font-size: 12px;
+      color: #64748b;
     }
 
-    .pulse-dot {
-      display: inline-block;
+    .status-badge-live {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot-live {
       width: 8px;
       height: 8px;
       background-color: #10b981;
       border-radius: 50%;
-      margin-right: 6px;
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
     }
   </style>
 </head>
-<body>
+<body oncontextmenu="return false;">
 
-  <!-- Top Header Bar -->
-  <header class="top-bar">
-    <div class="system-title">
-      <div>
-        <h1 id="titleHeader">ตารางสถานะห้องประชุม (ห้องสมุดฯ อาคาร 60 ปี คณะสัตวแพทยศาสตร์ จุฬาฯ)</h1>
-        <div class="date-display" id="dateDisplay">กำลังโหลดวันที่...</div>
-      </div>
-      <div class="realtime-clock" id="clock">00:00:00</div>
+  <!-- แถบ Header -->
+  <div class="header-panel">
+    <div class="title-group">
+      <h1>ตารางสถานะห้องประชุม (ห้องสมุดฯ อาคาร 60 ปี คณะสัตวแพทยศาสตร์ จุฬาฯ)</h1>
+      <p id="currentDateText">กำลังโหลดวันที่...</p>
     </div>
 
-    <!-- Status Legend -->
-    <div class="status-legend">
-      <div class="legend-item">
-        <span class="legend-badge free"></span>
-        <span id="lblFree">ว่าง (Free)</span>
-      </div>
-      <div class="legend-item">
-        <span class="legend-badge pending"></span>
-        <span id="lblPending">รออนุมัติ / สนใจ</span>
-      </div>
-      <div class="legend-item">
-        <span class="legend-badge busy"></span>
-        <span id="lblBusy">ไม่ว่าง / มีคนจอง</span>
-      </div>
-      <div class="legend-item">
-        <span class="legend-badge closed"></span>
-        <span id="lblClosed">ปิดบริการ</span>
-      </div>
+    <div class="clock-badge" id="liveClock">--:--:--</div>
+
+    <div class="legend-group">
+      <div class="legend-item"><span class="legend-box" style="background: var(--color-free);"></span> ว่าง (Free)</div>
+      <div class="legend-item"><span class="legend-box" style="background: var(--color-pending);"></span> รอนุมัติ / สนใจ</div>
+      <div class="legend-item"><span class="legend-box" style="background: var(--color-busy);"></span> ไม่ว่าง / ถูกจอง</div>
+      <div class="legend-item"><span class="legend-box" style="background: var(--color-closed);"></span> ปิดบริการ</div>
     </div>
 
-    <!-- Library Logo Section -->
     <div class="logo-container">
-      <img src="https://cdn.phototourl.com/free/2026-09-07-daa6828c-663e-4342-8f19-94a0a1df7678.png" alt="โลโก้ห้องสมุด คณะสัตวแพทยศาสตร์ จุฬาฯ" class="library-logo">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Chulalongkorn_Veterinary_Science_Logo.svg/200px-Chulalongkorn_Veterinary_Science_Logo.svg.png" 
+           alt="CUVET Logo" 
+           onerror="this.style.display='none'">
     </div>
-  </header>
+  </div>
 
-  <!-- Table Board -->
-  <main class="table-card">
-    <div class="table-wrapper">
-      <table id="scheduleTable">
-        <thead>
-          <tr id="headerRow">
-            <th class="room-col-head">ชั้น / ห้อง</th>
-          </tr>
-        </thead>
-        <tbody id="tableBody">
-        </tbody>
-      </table>
+  <!-- โครงสร้างตาราง -->
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr id="tableHeaderRow">
+          <th class="col-room">ชั้น / ห้อง</th>
+          <th data-slot="08:00 - 09:00">08:00 - 09:00</th>
+          <th data-slot="09:00 - 10:00">09:00 - 10:00</th>
+          <th data-slot="10:00 - 11:00">10:00 - 11:00</th>
+          <th data-slot="11:00 - 12:00">11:00 - 12:00</th>
+          <th data-slot="12:00 - 13:00">12:00 - 13:00</th>
+          <th data-slot="13:00 - 14:00">13:00 - 14:00</th>
+          <th data-slot="14:00 - 15:00">14:00 - 15:00</th>
+          <th data-slot="15:00 - 16:00">15:00 - 16:00</th>
+          <th data-slot="16:00 - 17:00">16:00 - 17:00</th>
+          <th data-slot="17:00 - 18:00">17:00 - 18:00</th>
+          <th data-slot="18:00 - 19:00">18:00 - 19:00</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr>
+          <td colspan="12" style="padding: 30px; color: #64748b;">กำลังดึงข้อมูลสถานะห้องประชุม...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- แถบสถานะด้านล่าง -->
+  <div class="footer-bar">
+    <div class="status-badge-live">
+      <span class="dot-live"></span>
+      <span id="connectionStatusText">กำลังเชื่อมต่อฐานข้อมูล Google Sheets...</span>
     </div>
+    <div>Powered by Netlify</div>
+  </div>
 
-    <footer class="footer-bar">
-      <div>
-        <span class="pulse-dot"></span>
-        <span id="syncStatus">กำลังเชื่อมต่อระบบ Cloud...</span>
-      </div>
-      <div>อัปเดตล่าสุด: <span id="lastUpdated">-</span></div>
-    </footer>
-  </main>
+  <!-- โหลด Fast Cache ถ้ามี -->
+  <script src="data.js"></script>
 
-  <!-- โหลดไฟล์ config.js และ data.js สำหรับใช้งานแบบสำรอง -->
-  <script src="config.js"></script>
-  <script id="cunexDataSource" src="data.js"></script>
-  
   <script>
-    // 1. นำการตั้งค่าจาก config.js มาใส่ในหน้าจอ
-    function applyAdminConfig() {
-      if (window.DASHBOARD_CONFIG) {
-        const cfg = window.DASHBOARD_CONFIG;
-        if (cfg.headerTitle) document.getElementById('titleHeader').textContent = cfg.headerTitle;
-        if (cfg.legendFree) document.getElementById('lblFree').textContent = cfg.legendFree;
-        if (cfg.legendPending) document.getElementById('lblPending').textContent = cfg.legendPending;
-        if (cfg.legendBusy) document.getElementById('lblBusy').textContent = cfg.legendBusy;
-        if (cfg.legendClosed) document.getElementById('lblClosed').textContent = cfg.legendClosed;
+    // 1. ปิดคลิกขวาและลัดคีย์ลัดของบราวเซอร์สำหรับโหมด Kiosk
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey && ['s', 'p', 'u'].includes(e.key.toLowerCase())) || e.key === 'F12') {
+        e.preventDefault();
       }
-    }
-    applyAdminConfig();
+    });
 
-    // 2. นาฬิกาและวันที่แบบ Realtime
-    function updateClock() {
-      const now = new Date();
-      document.getElementById('clock').textContent = now.toLocaleTimeString('th-TH', { hour12: false });
-      document.getElementById('dateDisplay').textContent = now.toLocaleDateString('th-TH', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-    }
-    setInterval(updateClock, 1000);
-    updateClock();
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzjnkoN0q3jQPkQTMnxmpbn1Tthlg4vSBBY6U68EX60kBHwpl_fHv_6DYMcqAdJ00g7/exec";
 
-    // รายการเวลามาตรฐาน 08:00 - 19:00 น. (ตัดช่วง 19:00 - 20:00 ออก)[cite: 1]
-    const defaultTimeSlots = [
+    const TIME_SLOTS = [
       "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
       "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
       "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
     ];
 
-    // รายชื่อห้องประชุมมาตรฐานทั้งหมด 10 ห้อง ของอาคาร 60 ปี[cite: 1]
-    const ALL_REQUIRED_ROOMS = [
-      { id: "905", name: "ห้อง 905", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "906", name: "ห้อง 906", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "907", name: "ห้อง 907", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "908", name: "ห้อง 908", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "927", name: "ห้อง 927", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "928", name: "ห้อง 928", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "929", name: "ห้อง 929", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "930", name: "ห้อง 930", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "931", name: "ห้อง 931", floor: "9", building: "อาคาร 60 ปี" },
-      { id: "932", name: "ห้อง 932", floor: "9", building: "อาคาร 60 ปี" }
-    ];
+    // นาฬิกาและวันที่สด
+    function updateClock() {
+      const now = new Date();
+      const thaiDays = ["วันอาทิตย์", "วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์"];
+      const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      
+      const dayName = thaiDays[now.getDay()];
+      const dateNum = now.getDate();
+      const monthName = thaiMonths[now.getMonth()];
+      const yearBE = now.getFullYear() + 543;
 
-    function renderTableHeader(slots) {
-      const headerRow = document.getElementById('headerRow');
-      headerRow.innerHTML = '<th class="room-col-head">ชั้น / ห้อง</th>';
-      slots.forEach(slot => {
-        const th = document.createElement('th');
-        th.textContent = slot;
-        headerRow.appendChild(th);
-      });
+      document.getElementById('currentDateText').innerText = `${dayName}ที่ ${dateNum} ${monthName} ${yearBE}`;
+      document.getElementById('liveClock').innerText = now.toTimeString().split(' ')[0];
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // หา Index ของช่วงเวลาปัจจุบัน
+    function getCurrentSlotIndex() {
+      const currentHour = new Date().getHours();
+      if (currentHour >= 8 && currentHour < 19) {
+        return currentHour - 8;
+      }
+      return -1;
     }
 
-    function renderTableData(rooms, slots) {
+    // วาดตารางข้อมูลห้อง
+    function renderTable(roomsData, updatedAt = "") {
       const tbody = document.getElementById('tableBody');
-      tbody.innerHTML = '';
+      const currentSlotIdx = getCurrentSlotIndex();
 
-      rooms.forEach(room => {
-        const tr = document.createElement('tr');
+      // ไฮไลต์หัวคอลัมน์เวลาปัจจุบัน
+      const headerThs = document.querySelectorAll('#tableHeaderRow th');
+      headerThs.forEach((th, idx) => {
+        if (idx === 0) return;
+        if (idx - 1 === currentSlotIdx) {
+          th.classList.add('current-time-col');
+        } else {
+          th.classList.remove('current-time-col');
+        }
+      });
 
-        const tdRoom = document.createElement('td');
-        tdRoom.className = 'room-name-cell';
-        tdRoom.innerHTML = `${room.room_name} <span class="room-desc">${room.floor ? 'ชั้น ' + room.floor : ''} ${room.building || ''}</span>`;
-        tr.appendChild(tdRoom);
+      if (!roomsData || roomsData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="12" style="padding: 24px; color: #ef4444;">ไม่พบข้อมูลห้องประชุม</td></tr>`;
+        return;
+      }
 
-        slots.forEach(slot => {
-          const tdSlot = document.createElement('td');
-          tdSlot.className = 'slot-cell';
-          
-          let status = 'free';
-          if (room.slots) {
-            for (let k in room.slots) {
-              if (k.includes(slot) || slot.includes(k) || k.trim() === slot.trim()) {
-                status = room.slots[k];
-                break;
-              }
-            }
+      let html = "";
+      roomsData.forEach(room => {
+        const isMaintenance = room.is_maintenance || room.room_name.includes("906");
+        const roomDisplayName = isMaintenance ? `${room.room_name} (ปรับปรุง)` : room.room_name;
+        const subText = room.building ? `${room.building}` : "ชั้น 9 อาคาร 60 ปี";
+
+        html += `<tr>`;
+        html += `<td class="col-room">
+                  <div class="room-title">${roomDisplayName}</div>
+                  <div class="room-sub">${subText}</div>
+                 </td>`;
+
+        TIME_SLOTS.forEach((slot, slotIdx) => {
+          let status = (room.slots && room.slots[slot]) ? room.slots[slot] : "free";
+          if (isMaintenance) status = "closed";
+
+          let statusClass = `status-${status}`;
+          let icon = "◯";
+
+          if (status === "busy") {
+            icon = "👤";
+          } else if (status === "pending") {
+            icon = "⏳";
+          } else if (status === "closed") {
+            icon = "—";
           }
-          tdSlot.classList.add(status);
-          tr.appendChild(tdSlot);
+
+          const highlightClass = (slotIdx === currentSlotIdx) ? "current-time-col" : "";
+
+          html += `<td class="${statusClass} ${highlightClass}">
+                    <span class="icon-cell">${icon}</span>
+                   </td>`;
         });
 
-        tbody.appendChild(tr);
-      });
-    }
-
-    function applyData(data, sourceLabel = "ระบบ Cloud (Google Sheets)") {
-      const syncStatus = document.getElementById('syncStatus');
-      const lastUpdated = document.getElementById('lastUpdated');
-      const scrapedRooms = data.rooms || [];
-      
-      let activeSlots = defaultTimeSlots;
-      if (scrapedRooms.length > 0 && scrapedRooms[0].slots) {
-        const keys = Object.keys(scrapedRooms[0].slots);
-        if (keys.length > 0) {
-          activeSlots = keys.filter(slot => !slot.includes("19:00 - 20:00") && !slot.startsWith("19:") && !slot.startsWith("20:"));
-        }
-      }
-
-      // ตรวจสอบและแมปข้อมูลห้องให้ครบทั้ง 10 ห้องเสมอ ป้องกันห้อง 906 หาย[cite: 1]
-      const finalRooms = ALL_REQUIRED_ROOMS.map(reqRoom => {
-        const found = scrapedRooms.find(r => r.room_name && r.room_name.includes(reqRoom.id));
-        if (found) {
-          return found;
-        } else {
-          // หากห้องถูกปิด Inactive ใน CU NEX ให้ขึ้นว่า (ปรับปรุง) และใส่สถานะปิดบริการ[cite: 1]
-          const closedSlots = {};
-          activeSlots.forEach(s => closedSlots[s] = 'closed');
-          return {
-            room_name: reqRoom.name + " (ปรับปรุง)",
-            floor: reqRoom.floor,
-            building: reqRoom.building,
-            slots: closedSlots
-          };
-        }
+        html += `</tr>`;
       });
 
-      renderTableHeader(activeSlots);
-      renderTableData(finalRooms, activeSlots);
-      lastUpdated.textContent = data.updated_at || new Date().toLocaleTimeString('th-TH');
-      syncStatus.textContent = `เชื่อมต่อปกติผ่าน ${sourceLabel} (ดึงข้อมูลอัตโนมัติทุก 15 นาที)`;
+      tbody.innerHTML = html;
+
+      // อัปเดตเวลาการซิงค์ที่มุมซ้ายล่าง
+      const statusLabel = document.getElementById('connectionStatusText');
+      if (updatedAt) {
+        statusLabel.innerText = `เชื่อมต่อปกติผ่าน Google Sheets (คลาวด์สด) (อัปเดตล่าสุด: ${updatedAt} น.)`;
+      } else {
+        statusLabel.innerText = `เชื่อมต่อปกติผ่าน Google Sheets (คลาวด์สด)`;
+      }
     }
 
-    // แคชในเครื่องเบราว์เซอร์ เพื่อให้เปิดหน้าเว็บแล้วตารางขึ้นทันทีใน 0 วินาที[cite: 1]
-    const CACHE_KEY = "CUNEX_ROOMS_CACHE";
-
-    function loadFromLocalCache() {
+    // ดึงข้อมูลสดจาก Google Sheets
+    async function fetchLiveData() {
       try {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (parsed && parsed.rooms) {
-            applyData(parsed, "หน่วยความจำในเครื่อง (โหลดทันที)");
-            return true;
-          }
-        }
-      } catch (e) {
-        console.warn("อ่านแคชไม่สำเร็จ:", e);
-      }
-      return false;
-    }
-
-    // ดึงข้อมูลแบบ Fast-Cache + Background Sync[cite: 1]
-    async function refreshBookingData() {
-      const syncStatus = document.getElementById('syncStatus');
-      const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzjnkoN0q3jQPkQTMnxmpbn1Tthlg4vSBBY6U68EX60kBHwpl_fHv_6DYMcqAdJ00g7/exec";
-
-      // 1. นำข้อมูลที่จำไว้มาแสดงผลทันทีก่อน ไม่ต้องรอโหลด[cite: 1]
-      const hasCache = loadFromLocalCache();
-      if (!hasCache) {
-        if (window.CUNEX_DATA && window.CUNEX_DATA.rooms && window.CUNEX_DATA.rooms.length > 0) {
-          applyData(window.CUNEX_DATA, "ไฟล์ในเครื่อง (data.js)");
-        }
-      }
-
-      // 2. ดึงข้อมูลสดจาก Cloud เบื้องหลัง[cite: 1]
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-        const res = await fetch(GAS_API_URL + "?t=" + Date.now(), { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.rooms && data.rooms.length > 0) {
-            try {
-              localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-            } catch (e) {}
-
-            applyData(data, "Google Sheets (คลาวด์สด)");
-            return;
-          }
+        const res = await fetch(GAS_URL + "?t=" + new Date().getTime());
+        const data = await res.json();
+        if (data && data.rooms && data.rooms.length > 0) {
+          renderTable(data.rooms, data.updated_at || "");
+          localStorage.setItem("CUNEX_ROOMS_CACHE", JSON.stringify(data));
+          return;
         }
       } catch (err) {
-        console.warn("Cloud ตอบสนองช้า กำลังแสดงผลจากข้อมูลล่าสุด:", err);
+        console.warn("ดึงข้อมูลสดไม่สำเร็จ ใช้ข้อมูลสำรอง:", err);
       }
 
-      if (!hasCache && (!window.CUNEX_DATA || !window.CUNEX_DATA.rooms)) {
-        syncStatus.textContent = "กำลังรอข้อมูลรอบถัดไปจากระบบ...";
+      // ดึงจาก Local Storage หรือ data.js สำรอง
+      const cached = localStorage.getItem("CUNEX_ROOMS_CACHE");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        renderTable(parsed.rooms, parsed.updated_at || "");
+        document.getElementById('connectionStatusText').innerText = `เชื่อมต่อปกติผ่าน หน่วยความจำในเครื่อง (โหลดทันที)`;
+      } else if (window.CUNEX_DATA && window.CUNEX_DATA.rooms) {
+        renderTable(window.CUNEX_DATA.rooms, window.CUNEX_DATA.updated_at || "");
       }
     }
 
-    renderTableHeader(defaultTimeSlots);
-    refreshBookingData();
-
-    // รีเฟรชตรวจเช็กข้อมูลใหม่ทุก 60 วินาที[cite: 1]
-    setInterval(refreshBookingData, 60000);
+    // เรียกทำงานทันทีและดึงอัตโนมัติทุก 1 นาที
+    fetchLiveData();
+    setInterval(fetchLiveData, 60000);
   </script>
 </body>
 </html>
