@@ -101,14 +101,13 @@
 
     table {
       width: 100%;
-      height: 100%;
       border-collapse: collapse;
       text-align: center;
     }
 
     th, td {
       border: 1px solid #e2e8f0;
-      padding: 6px 4px;
+      padding: 8px 4px;
       font-size: 13px;
     }
 
@@ -120,7 +119,7 @@
     }
 
     th.col-room {
-      width: 150px;
+      width: 160px;
       text-align: left;
       padding-left: 16px;
     }
@@ -263,7 +262,7 @@
   <footer class="footer-panel">
     <div class="status-badge">
       <div class="dot-live"></div>
-      <span id="sync-status">เชื่อมต่อระบบห้องสมุดฯ ปกติ (ระบบแสดงสถานะเรียลไทม์)</span>
+      <span id="sync-status">กำลังเชื่อมต่อข้อมูลล่าสุด...</span>
     </div>
     <div>CU-VET Library Kiosk Dashboard</div>
   </footer>
@@ -288,7 +287,7 @@
       { id: "932", name: "9 ห้อง 932", sub: "อาคาร 60 ปี" }
     ];
 
-    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1Mqegfa0Jw1Fe2yZ0EEH2Cp7omnS_PxTPdbL9DqigyGQ/export?format=csv&gid=0";
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1Mqegfa0Jw1Fe2yZ0EEH2Cp7omnS_PxTPdbL9DqigyGQ/gviz/tq?tqx=out:csv&sheet=Dashboard";
 
     function updateDateTime() {
       const now = new Date();
@@ -365,43 +364,28 @@
       highlightCurrentTimeSlot(now.getHours());
     }
 
-    // ฟังก์ชันแยก CSV อย่างถูกต้อง (รองรับเครื่องหมายจุลภาคและบรรทัดใหม่)
-    function parseCSV(text) {
-      const p = '', row = [''], ret = [row];
-      let i = 0, r = 0, s = !0, l;
-      for (l of text) {
-        if ('"' === l) {
-          if (s && l === p) row[i] += l;
-          s = !s;
-        } else if (',' === l && s) l = row[++i] = '';
-        else if ('\n' === l && s) {
-          if ('\r' === p) row[i] = row[i].slice(0, -1);
-          row = ret[++r] = [l = '']; i = 0;
-        } else row[i] += l;
-        p = l;
-      }
-      return ret;
-    }
-
     async function loadSheetData() {
       try {
-        const response = await fetch(SHEET_CSV_URL + "&_t=" + Date.now());
-        if (!response.ok) throw new Error("Fetch error");
+        const response = await fetch(SHEET_CSV_URL + "&t=" + Date.now());
+        if (!response.ok) throw new Error("ไม่สามารถดาวน์โหลดข้อมูลชีทได้");
 
         const csvText = await response.text();
-        const rows = parseCSV(csvText);
+        const lines = csvText.split(/\r?\n/);
         const roomDataMap = {};
 
-        rows.forEach((cols, idx) => {
-          if (idx === 0 || cols.length < 12) return;
-          const roomCol = (cols[0] || '').trim();
+        lines.forEach((line, idx) => {
+          if (idx === 0 || !line.trim()) return;
+          // ลบเครื่องหมายคำพูดคู่รอบข้อความ
+          const cols = line.split('","').map(c => c.replace(/^"|"$/g, '').trim());
+          if (cols.length < 12) return;
 
+          const roomCol = cols[0] || '';
           ROOM_DEFS.forEach(r => {
             if (roomCol.includes(r.id)) {
               roomDataMap[r.id] = {};
               TIME_SLOTS.forEach((slot, sIdx) => {
-                const cellVal = (cols[2 + sIdx] || 'free').trim().toLowerCase();
-                roomDataMap[r.id][slot] = cellVal;
+                const val = (cols[2 + sIdx] || 'free').toLowerCase();
+                roomDataMap[r.id][slot] = val;
               });
             }
           });
@@ -410,18 +394,19 @@
         renderTable(roomDataMap);
         document.getElementById('sync-status').textContent = "เชื่อมต่อระบบห้องสมุดฯ ปกติ (ระบบแสดงสถานะเรียลไทม์)";
       } catch (err) {
-        console.warn("Sheet fetch error:", err);
+        console.warn("Sheet fetch notice:", err);
+        document.getElementById('sync-status').textContent = "กำลังรออัปเดตข้อมูลจากตาราง...";
       }
     }
 
-    // 1. เรนเดอร์ตารางโครงสร้างขึ้นมาทันทีก่อน ไม่ต้องรอโหลดชีท
+    // เรนเดอร์โครงตารางห้อง 10 ห้องขึ้นทันทีตั้งแต่เริ่มต้น
     renderTable();
-
-    // 2. อัปเดตเวลาและโหลดข้อมูลจริงจากชีท
     updateDateTime();
     setInterval(updateDateTime, 1000);
+
+    // ดึงข้อมูลจริงจากชีท
     loadSheetData();
-    setInterval(loadSheetData, 60000); // เช็คชีทใหม่ทุก 1 นาที
+    setInterval(loadSheetData, 60000);
   </script>
 </body>
 </html>
