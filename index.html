@@ -27,7 +27,6 @@
       overflow-x: hidden;
     }
 
-    /* Header Panel */
     .header-panel {
       background: linear-gradient(135deg, #0f2744 0%, #1e3a5f 100%);
       color: #ffffff;
@@ -89,7 +88,6 @@
     .box-busy { background-color: #ec4899; }
     .box-closed { background-color: #64748b; }
 
-    /* Table Container */
     .table-container {
       flex: 1;
       background: #ffffff;
@@ -122,7 +120,7 @@
     }
 
     th.col-room {
-      width: 140px;
+      width: 150px;
       text-align: left;
       padding-left: 16px;
     }
@@ -144,7 +142,6 @@
       color: #64748b;
     }
 
-    /* Current Hour Active Column */
     .col-active {
       background-color: #fefce8 !important;
       border-left: 2px solid #eab308 !important;
@@ -162,10 +159,7 @@
       border-bottom: 2px solid #eab308 !important;
     }
 
-    /* Cell Statuses */
-    .cell-free {
-      background-color: #f0f9ff;
-    }
+    .cell-free { background-color: #f0f9ff; }
     .cell-free .icon-circle {
       display: inline-block;
       width: 16px;
@@ -174,17 +168,13 @@
       border-radius: 50%;
     }
 
-    .cell-busy {
-      background-color: #fdf2f8;
-    }
+    .cell-busy { background-color: #fdf2f8; }
     .cell-busy .icon-user {
       font-size: 16px;
       color: #db2777;
     }
 
-    .cell-pending {
-      background-color: #fffbeb;
-    }
+    .cell-pending { background-color: #fffbeb; }
     .cell-pending .icon-pending {
       font-size: 16px;
       color: #d97706;
@@ -196,7 +186,6 @@
       font-weight: 600;
     }
 
-    /* Footer */
     .footer-panel {
       display: flex;
       justify-content: space-between;
@@ -232,7 +221,6 @@
 </head>
 <body oncontextmenu="return false;">
 
-  <!-- Header -->
   <header class="header-panel">
     <div class="header-titles">
       <h1>ตารางสถานะห้องประชุม (ห้องสมุดฯ อาคาร 60 ปี คณะสัตวแพทยศาสตร์ จุฬาฯ)</h1>
@@ -249,7 +237,6 @@
     </div>
   </header>
 
-  <!-- Table Body -->
   <main class="table-container">
     <table id="kiosk-table">
       <thead>
@@ -269,12 +256,10 @@
         </tr>
       </thead>
       <tbody id="table-body">
-        <!-- Render Rows dynamically -->
       </tbody>
     </table>
   </main>
 
-  <!-- Footer -->
   <footer class="footer-panel">
     <div class="status-badge">
       <div class="dot-live"></div>
@@ -282,9 +267,6 @@
     </div>
     <div>CU-VET Library Kiosk Dashboard</div>
   </footer>
-
-  <!-- Local fallback data if sheets offline -->
-  <script src="data.js"></script>
 
   <script>
     const TIME_SLOTS = [
@@ -294,8 +276,8 @@
     ];
 
     const ROOM_DEFS = [
-      { id: "905", name: "9 ห้อง 905", sub: "อาคาร 60 ปี", isSpecial: "905" },
-      { id: "906", name: "ห้อง 906 (ปรับปรุง)", sub: "ชั้น 9 อาคาร 60 ปี", isClosedAll: true },
+      { id: "905", name: "9 ห้อง 905", sub: "อาคาร 60 ปี" },
+      { id: "906", name: "ห้อง 906 (ปรับปรุง)", sub: "ชั้น 9 อาคาร 60 ปี" },
       { id: "907", name: "9 ห้อง 907", sub: "อาคาร 60 ปี" },
       { id: "908", name: "9 ห้อง 908", sub: "อาคาร 60 ปี" },
       { id: "927", name: "9 ห้อง 927", sub: "อาคาร 60 ปี" },
@@ -306,33 +288,24 @@
       { id: "932", name: "9 ห้อง 932", sub: "อาคาร 60 ปี" }
     ];
 
-    // Google Sheets CSV Export URL
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1Mqegfa0Jw1Fe2yZ0EEH2Cp7omnS_PxTPdbL9DqigyGQ/export?format=csv&gid=0";
 
-    // 1. Live Clock & Thai Date
     function updateDateTime() {
       const now = new Date();
       const thaiDays = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
       const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-      
-      const dayName = thaiDays[now.getDay()];
-      const day = now.getDate();
-      const month = thaiMonths[now.getMonth()];
-      const year = now.getFullYear() + 543;
 
-      document.getElementById('current-date-text').textContent = `วัน${dayName}ที่ ${day} ${month} ${year}`;
+      document.getElementById('current-date-text').textContent = `วัน${thaiDays[now.getDay()]}ที่ ${now.getDate()} ${thaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`;
       document.getElementById('clock').textContent = now.toTimeString().split(' ')[0];
 
       highlightCurrentTimeSlot(now.getHours());
     }
 
-    // 2. Active Slot Highlight
     function highlightCurrentTimeSlot(currentHour) {
       const headers = document.querySelectorAll('th[data-slot]');
       headers.forEach((th, idx) => {
         const startHour = 8 + idx;
         const isActive = (currentHour === startHour);
-        
         th.classList.toggle('col-active', isActive);
 
         const rows = document.querySelectorAll('#table-body tr');
@@ -345,7 +318,6 @@
       });
     }
 
-    // 3. Render Cell Content
     function getCellHtml(status) {
       const s = (status || 'free').toLowerCase();
       if (s === 'closed') {
@@ -358,7 +330,6 @@
       return `<span class="icon-circle"></span>`;
     }
 
-    // 4. Render Table DOM
     function renderTable(roomDataMap = {}) {
       const tbody = document.getElementById('table-body');
       tbody.innerHTML = '';
@@ -366,24 +337,17 @@
       ROOM_DEFS.forEach(room => {
         const tr = document.createElement('tr');
 
-        // Room column
         const tdRoom = document.createElement('td');
         tdRoom.className = 'room-label';
         tdRoom.innerHTML = `<div class="room-name">${room.name}</div><div class="room-sub">${room.sub}</div>`;
         tr.appendChild(tdRoom);
 
-        // Slot columns
-        TIME_SLOTS.forEach((slot, slotIdx) => {
+        TIME_SLOTS.forEach((slot) => {
           const tdSlot = document.createElement('td');
           tdSlot.className = 'slot-cell';
 
           let status = "free";
-
-          if (room.isClosedAll) {
-            status = "closed";
-          } else if (room.isSpecial === "905" && slot === "18:00 - 19:00") {
-            status = "closed";
-          } else if (roomDataMap[room.id] && roomDataMap[room.id][slot]) {
+          if (roomDataMap[room.id] && roomDataMap[room.id][slot]) {
             status = roomDataMap[room.id][slot];
           }
 
@@ -399,15 +363,13 @@
       highlightCurrentTimeSlot(now.getHours());
     }
 
-    // 5. Fetch Data from Google Sheets CSV
     async function loadSheetData() {
       try {
         const response = await fetch(SHEET_CSV_URL + "&_t=" + Date.now());
-        if (!response.ok) throw new Error("Fetch failed");
-        
+        if (!response.ok) throw new Error("Fetch error");
+
         const csvText = await response.text();
         const rows = csvText.split(/\r?\n/).map(r => r.split(','));
-
         const roomDataMap = {};
 
         rows.forEach((cols, idx) => {
@@ -427,36 +389,15 @@
 
         renderTable(roomDataMap);
         document.getElementById('sync-status').textContent = "เชื่อมต่อระบบห้องสมุดฯ ปกติ (ระบบแสดงสถานะเรียลไทม์)";
-
       } catch (err) {
-        console.warn("Using fallback local data.js");
-        loadFallbackData();
+        console.warn("Sheet fetch error:", err);
       }
     }
 
-    // 6. Fallback from data.js
-    function loadFallbackData() {
-      const roomDataMap = {};
-      if (window.CUNEX_DATA && window.CUNEX_DATA.rooms) {
-        window.CUNEX_DATA.rooms.forEach(r => {
-          ROOM_DEFS.forEach(def => {
-            if (r.room_name && r.room_name.includes(def.id)) {
-              roomDataMap[def.id] = r.slots || {};
-            }
-          });
-        });
-      }
-      renderTable(roomDataMap);
-      document.getElementById('sync-status').textContent = "เชื่อมต่อระบบห้องสมุดฯ ปกติ (ระบบแสดงสถานะเรียลไทม์)";
-    }
-
-    // Init
     updateDateTime();
     setInterval(updateDateTime, 1000);
-
     loadSheetData();
-    // Auto-refresh from Google Sheets every 60 seconds
-    setInterval(loadSheetData, 60000);
+    setInterval(loadSheetData, 60000); // รีเฟรชตารางจากชีททุก 1 นาที
   </script>
 </body>
 </html>
