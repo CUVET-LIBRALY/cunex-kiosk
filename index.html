@@ -101,13 +101,14 @@
 
     table {
       width: 100%;
+      height: 100%;
       border-collapse: collapse;
       text-align: center;
     }
 
     th, td {
       border: 1px solid #e2e8f0;
-      padding: 8px 4px;
+      padding: 6px 4px;
       font-size: 13px;
     }
 
@@ -119,7 +120,7 @@
     }
 
     th.col-room {
-      width: 160px;
+      width: 150px;
       text-align: left;
       padding-left: 16px;
     }
@@ -262,7 +263,7 @@
   <footer class="footer-panel">
     <div class="status-badge">
       <div class="dot-live"></div>
-      <span id="sync-status">กำลังเชื่อมต่อข้อมูลล่าสุด...</span>
+      <span id="sync-status">กำลังซิงค์ข้อมูลจาก CU NEX...</span>
     </div>
     <div>CU-VET Library Kiosk Dashboard</div>
   </footer>
@@ -287,6 +288,7 @@
       { id: "932", name: "9 ห้อง 932", sub: "อาคาร 60 ปี" }
     ];
 
+    // ดึงผ่าน Google Visualization API (แม่นยำและไม่ติดแคช)
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1Mqegfa0Jw1Fe2yZ0EEH2Cp7omnS_PxTPdbL9DqigyGQ/gviz/tq?tqx=out:csv&sheet=Dashboard";
 
     function updateDateTime() {
@@ -364,10 +366,30 @@
       highlightCurrentTimeSlot(now.getHours());
     }
 
+    // ตัวอ่าน CSV มาตรฐานแยก Comma แบบรองรับ Quotation
+    function parseCSVLine(text) {
+      let result = [];
+      let cur = '';
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        let c = text[i];
+        if (c === '"') {
+          inQuotes = !inQuotes;
+        } else if (c === ',' && !inQuotes) {
+          result.push(cur.trim().replace(/^"|"$/g, ''));
+          cur = '';
+        } else {
+          cur += c;
+        }
+      }
+      result.push(cur.trim().replace(/^"|"$/g, ''));
+      return result;
+    }
+
     async function loadSheetData() {
       try {
-        const response = await fetch(SHEET_CSV_URL + "&t=" + Date.now());
-        if (!response.ok) throw new Error("ไม่สามารถดาวน์โหลดข้อมูลชีทได้");
+        const response = await fetch(SHEET_CSV_URL + "&_cache=" + Date.now());
+        if (!response.ok) throw new Error("ไม่สามารถดาวน์โหลดไฟล์ชีทได้");
 
         const csvText = await response.text();
         const lines = csvText.split(/\r?\n/);
@@ -375,16 +397,18 @@
 
         lines.forEach((line, idx) => {
           if (idx === 0 || !line.trim()) return;
-          // ลบเครื่องหมายคำพูดคู่รอบข้อความ
-          const cols = line.split('","').map(c => c.replace(/^"|"$/g, '').trim());
-          if (cols.length < 12) return;
+          const cols = parseCSVLine(line);
+          if (cols.length < 5) return;
 
           const roomCol = cols[0] || '';
+          
+          // ค้นหาว่าเป็นห้องไหน (905, 907, ฯลฯ)
           ROOM_DEFS.forEach(r => {
             if (roomCol.includes(r.id)) {
               roomDataMap[r.id] = {};
               TIME_SLOTS.forEach((slot, sIdx) => {
-                const val = (cols[2 + sIdx] || 'free').toLowerCase();
+                // คอลัมน์ C คือช่องที่ 3 ในแถว (index = 2)
+                const val = (cols[2 + sIdx] || 'free').trim().toLowerCase();
                 roomDataMap[r.id][slot] = val;
               });
             }
@@ -394,19 +418,15 @@
         renderTable(roomDataMap);
         document.getElementById('sync-status').textContent = "เชื่อมต่อระบบห้องสมุดฯ ปกติ (ระบบแสดงสถานะเรียลไทม์)";
       } catch (err) {
-        console.warn("Sheet fetch notice:", err);
-        document.getElementById('sync-status').textContent = "กำลังรออัปเดตข้อมูลจากตาราง...";
+        console.warn("Sheet read error:", err);
       }
     }
 
-    // เรนเดอร์โครงตารางห้อง 10 ห้องขึ้นทันทีตั้งแต่เริ่มต้น
     renderTable();
     updateDateTime();
     setInterval(updateDateTime, 1000);
-
-    // ดึงข้อมูลจริงจากชีท
     loadSheetData();
-    setInterval(loadSheetData, 60000);
+    setInterval(loadSheetData, 60000); // เช็คชีทใหม่ทุก 1 นาที
   </script>
 </body>
 </html>
