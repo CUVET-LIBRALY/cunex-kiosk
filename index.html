@@ -16,9 +16,19 @@
       -webkit-user-select: none;
     }
 
+    /* ธีมสีคณะสัตวแพทยศาสตร์ จุฬาฯ */
+    :root {
+      --cu-pink: #de577c;
+      --cu-pink-light: #fce7ee;
+      --cu-blue: #8db8e9;
+      --cu-blue-light: #f0f6fc;
+      --navy-dark: #0f2744;
+      --navy-accent: #1e3a5f;
+    }
+
     body {
       font-family: 'Sarabun', sans-serif;
-      background-color: #f1f5f9;
+      background-color: #f8fafc;
       color: #1e293b;
       min-height: 100vh;
       display: flex;
@@ -28,7 +38,7 @@
     }
 
     .header-panel {
-      background: linear-gradient(135deg, #0f2744 0%, #1e3a5f 100%);
+      background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy-accent) 100%);
       color: #ffffff;
       border-radius: 12px;
       padding: 16px 24px;
@@ -37,6 +47,7 @@
       justify-content: space-between;
       box-shadow: 0 4px 15px rgba(15, 39, 68, 0.15);
       margin-bottom: 16px;
+      border-left: 6px solid var(--cu-pink);
     }
 
     .header-titles h1 {
@@ -48,13 +59,13 @@
 
     .header-titles p {
       font-size: 14px;
-      color: #94a3b8;
+      color: #cbd5e1;
       font-weight: 400;
     }
 
     .clock-display {
       background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.25);
       padding: 6px 22px;
       border-radius: 8px;
       font-size: 26px;
@@ -83,10 +94,10 @@
       border-radius: 3px;
     }
 
-    .box-free { background-color: #38bdf8; }
+    .box-free { background-color: var(--cu-blue); }
     .box-pending { background-color: #f59e0b; }
-    .box-busy { background-color: #ec4899; }
-    .box-closed { background-color: #64748b; }
+    .box-busy { background-color: var(--cu-pink); }
+    .box-closed { background-color: #94a3b8; }
 
     .table-container {
       flex: 1;
@@ -110,6 +121,7 @@
       border: 1px solid #e2e8f0;
       padding: 6px 4px;
       font-size: 13px;
+      transition: background-color 0.2s;
     }
 
     thead th {
@@ -120,7 +132,7 @@
     }
 
     th.col-room {
-      width: 150px;
+      width: 155px;
       text-align: left;
       padding-left: 16px;
     }
@@ -142,48 +154,62 @@
       color: #64748b;
     }
 
+    /* === ไฮไลต์ชั่วโมงปัจจุบัน (โทนสีฟ้าหม่น ไม่แย่งซีนสีเหลือง) === */
     .col-active {
-      background-color: #fefce8 !important;
-      border-left: 2px solid #eab308 !important;
-      border-right: 2px solid #eab308 !important;
+      background-color: rgba(141, 184, 233, 0.12) !important;
+      border-left: 2px solid var(--cu-blue) !important;
+      border-right: 2px solid var(--cu-blue) !important;
     }
 
     thead th.col-active {
-      background-color: #fef08a !important;
-      color: #854d0e !important;
+      background-color: #dbe8f8 !important;
+      color: var(--navy-dark) !important;
       font-weight: 700 !important;
-      border-top: 2px solid #eab308 !important;
+      border-top: 3px solid var(--cu-blue) !important;
     }
 
     tbody tr:last-child td.col-active {
-      border-bottom: 2px solid #eab308 !important;
+      border-bottom: 2px solid var(--cu-blue) !important;
     }
 
-    .cell-free { background-color: #f0f9ff; }
+    /* สถานะว่าง (Free) - ฟ้าหม่น */
+    .cell-free { background-color: #ffffff; }
     .cell-free .icon-circle {
       display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid #0ea5e9;
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid var(--cu-blue);
       border-radius: 50%;
     }
 
-    .cell-busy { background-color: #fdf2f8; }
+    /* สถานะติดจอง (Busy) - ชมพูเข้ม คมชัด */
+    .cell-busy { 
+      background-color: var(--cu-pink-light); 
+    }
     .cell-busy .icon-user {
-      font-size: 16px;
-      color: #db2777;
+      font-size: 17px;
+      color: var(--cu-pink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      filter: drop-shadow(0 1px 1px rgba(222, 87, 124, 0.3));
     }
 
-    .cell-pending { background-color: #fffbeb; }
+    /* สถานะรออนุมัติ (Pending) - ส้มอำพัน */
+    .cell-pending { 
+      background-color: #fef3c7; 
+    }
     .cell-pending .icon-pending {
-      font-size: 16px;
+      font-size: 15px;
       color: #d97706;
     }
 
+    /* สถานะปิดบริการ (Closed) - สีเทา */
     .cell-closed {
       background-color: #f1f5f9;
       color: #94a3b8;
-      font-weight: 600;
+      font-weight: 700;
+      font-size: 16px;
     }
 
     .footer-panel {
@@ -263,7 +289,7 @@
   <footer class="footer-panel">
     <div class="status-badge">
       <div class="dot-live"></div>
-      <span id="sync-status">กำลังซิงค์ข้อมูลจาก CU NEX...</span>
+      <span id="sync-status">เชื่อมต่อระบบห้องสมุดฯ ปกติ (ระบบแสดงสถานะเรียลไทม์)</span>
     </div>
     <div>CU-VET Library Kiosk Dashboard</div>
   </footer>
@@ -288,7 +314,6 @@
       { id: "932", name: "9 ห้อง 932", sub: "อาคาร 60 ปี" }
     ];
 
-    // ดึงผ่าน Google Visualization API (แม่นยำและไม่ติดแคช)
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1Mqegfa0Jw1Fe2yZ0EEH2Cp7omnS_PxTPdbL9DqigyGQ/gviz/tq?tqx=out:csv&sheet=Dashboard";
 
     function updateDateTime() {
@@ -322,7 +347,7 @@
     function getCellHtml(status) {
       const s = (status || 'free').toLowerCase();
       if (s === 'closed') {
-        return `<span style="color:#94a3b8; font-weight:bold;">—</span>`;
+        return `<span style="color:#94a3b8;">—</span>`;
       } else if (s === 'busy') {
         return `<span class="icon-user">👤</span>`;
       } else if (s === 'pending') {
@@ -366,7 +391,6 @@
       highlightCurrentTimeSlot(now.getHours());
     }
 
-    // ตัวอ่าน CSV มาตรฐานแยก Comma แบบรองรับ Quotation
     function parseCSVLine(text) {
       let result = [];
       let cur = '';
@@ -388,8 +412,8 @@
 
     async function loadSheetData() {
       try {
-        const response = await fetch(SHEET_CSV_URL + "&_cache=" + Date.now());
-        if (!response.ok) throw new Error("ไม่สามารถดาวน์โหลดไฟล์ชีทได้");
+        const response = await fetch(SHEET_CSV_URL + "&_t=" + Date.now());
+        if (!response.ok) throw new Error("Fetch failed");
 
         const csvText = await response.text();
         const lines = csvText.split(/\r?\n/);
@@ -401,13 +425,10 @@
           if (cols.length < 5) return;
 
           const roomCol = cols[0] || '';
-          
-          // ค้นหาว่าเป็นห้องไหน (905, 907, ฯลฯ)
           ROOM_DEFS.forEach(r => {
             if (roomCol.includes(r.id)) {
               roomDataMap[r.id] = {};
               TIME_SLOTS.forEach((slot, sIdx) => {
-                // คอลัมน์ C คือช่องที่ 3 ในแถว (index = 2)
                 const val = (cols[2 + sIdx] || 'free').trim().toLowerCase();
                 roomDataMap[r.id][slot] = val;
               });
@@ -418,7 +439,7 @@
         renderTable(roomDataMap);
         document.getElementById('sync-status').textContent = "เชื่อมต่อระบบห้องสมุดฯ ปกติ (ระบบแสดงสถานะเรียลไทม์)";
       } catch (err) {
-        console.warn("Sheet read error:", err);
+        console.warn("Sheet fetch notice:", err);
       }
     }
 
@@ -426,7 +447,7 @@
     updateDateTime();
     setInterval(updateDateTime, 1000);
     loadSheetData();
-    setInterval(loadSheetData, 60000); // เช็คชีทใหม่ทุก 1 นาที
+    setInterval(loadSheetData, 60000);
   </script>
 </body>
 </html>
