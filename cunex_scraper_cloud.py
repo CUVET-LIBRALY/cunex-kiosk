@@ -40,7 +40,6 @@ def run():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # จำลองเบราว์เซอร์ให้เหมือน Google Chrome บน Windows จริงทุกประการ
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             viewport={"width": 1366, "height": 768},
@@ -67,7 +66,6 @@ def run():
 
             # 3. นำทางไปหน้าค้นหาห้อง
             print("3. นำทางไปหน้าค้นหาการจอง...")
-            # ตรวจสอบว่าหน้าปัจจุบันมีปุ่มเมนูค้นหาหรือไม่
             menu_btn = page.locator('a:has-text("ค้นหาห้อง"), a[href*="SearchRoom"]')
             if menu_btn.count() > 0:
                 print("พบคลิกจากเมนู...")
