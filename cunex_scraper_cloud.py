@@ -4,20 +4,16 @@ import datetime
 import requests
 from playwright.sync_api import sync_playwright
 
-# อ่านค่า Secret จาก GitHub Environment Variables
 USER = os.environ.get("CUNEX_USER")
 PASS = os.environ.get("CUNEX_PASS")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-# พจนานุกรมแปลงชื่อเดือนภาษาไทย
 THAI_MONTHS = [
     "", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
     "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
 ]
 
 def get_thai_date_str():
-    """สร้างสตริงวันที่ภาษาไทย เช่น '10 กันยายน 2569'"""
-    # ปรับ Timezone เป็นประเทศไทย (UTC+7)
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     thai_now = utc_now + datetime.timedelta(hours=7)
     day = thai_now.day
@@ -26,7 +22,6 @@ def get_thai_date_str():
     return f"{day} {month} {year}"
 
 def parse_slot_status(cell_style):
-    """แปลงสีพื้นหลังของแต่ละช่วงเวลาเป็นสถานะ"""
     style_lower = (cell_style or "").lower()
     if "#9e9e9e" in style_lower or "rgb(158, 158, 158)" in style_lower or "grey" in style_lower or "gray" in style_lower:
         return "closed"
@@ -45,7 +40,7 @@ def run():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        context = browser.new_context(viewport={"width": 1366, "height": 768})
         page = context.new_page()
 
         # 1. เข้าหน้า Login
@@ -58,23 +53,50 @@ def run():
         page.locator('input[type="password"]').first.fill(PASS)
         page.locator('button[type="submit"], input[type="submit"]').first.click()
         page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(3000)
 
         # 3. นำทางไปหน้าค้นหาห้อง
         print("3. นำทางไปหน้าค้นหาการจอง...")
-        page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom", timeout=60000)
+        # ลองคลิกจากเมนูก่อน หากไม่เจอค่อยเปิดลิงก์ตรง
+        try:
+            menu_item = page.locator('text="ค้นหาห้องเพื่อทำการจอง", text="ค้นหาห้อง", a[href*="SearchRoom"]').first
+            if menu_item.is_visible(timeout=5000):
+                menu_item.click()
+            else:
+                page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom", timeout=60000)
+        except Exception:
+            page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom", timeout=60000)
+
         page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(3000)
 
         # 4. เลือกตึก อาคาร 60 ปี
         print("4. กำลังเลือกตึก: อาคาร 60 ปี...")
+        page.wait_for_selector('select', timeout=45000)
         building_select = page.locator('select').first
-        building_select.select_option(label="อาคาร 60 ปี (สำหรับนิสิตคณะสัตวแพทยศาสตร์)")
-        page.wait_for_timeout(1000)
+        
+        # ค้นหาตัวเลือกที่มีคำว่า อาคาร 60 ปี
+        options = building_select.locator('option').all()
+        target_value = None
+        for opt in options:
+            if "อาคาร 60 ปี" in opt.inner_text():
+                target_value = opt.get_attribute("value")
+                break
+        
+        if target_value:
+            building_select.select_option(value=target_value)
+        else:
+            building_select.select_option(index=1)
+            
+        page.wait_for_timeout(1500)
 
         # 5. กรอกวันที่ปัจจุบัน
         print(f"5. กำลังกรอกวันที่: {thai_date}...")
         date_input = page.locator('input[type="text"]').nth(0)
+        date_input.click()
         date_input.fill("")
         date_input.fill(thai_date)
+        page.wait_for_timeout(500)
 
         # 6. กดปุ่มค้นหา
         print("6. กำลังกดปุ่มค้นหา...")
@@ -83,8 +105,8 @@ def run():
 
         # 7. รอผลลัพธ์
         print("7. กำลังรอการประมวลผลตารางห้อง...")
-        page.wait_for_selector('table', timeout=30000)
-        page.wait_for_timeout(2000)
+        page.wait_for_selector('table', timeout=45000)
+        page.wait_for_timeout(3000)
 
         # 8. อ่านข้อมูลตาราง
         print("8. กำลังอ่านข้อมูลตารางห้อง...")
