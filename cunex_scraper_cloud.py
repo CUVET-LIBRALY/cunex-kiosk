@@ -23,13 +23,13 @@ def get_thai_date_str():
 
 def parse_slot_status(cell_style):
     style_lower = (cell_style or "").lower()
-    if "#9e9e9e" in style_lower or "rgb(158, 158, 158)" in style_lower or "grey" in style_lower or "gray" in style_lower:
+    if any(c in style_lower for c in ["#9e9e9e", "rgb(158, 158, 158)", "grey", "gray"]):
         return "closed"
-    elif "#f06292" in style_lower or "rgb(240, 98, 146)" in style_lower or "pink" in style_lower:
+    elif any(c in style_lower for c in ["#f06292", "rgb(240, 98, 146)", "pink"]):
         return "busy"
-    elif "#4caf50" in style_lower or "rgb(76, 175, 80)" in style_lower or "green" in style_lower:
+    elif any(c in style_lower for c in ["#4caf50", "rgb(76, 175, 80)", "green"]):
         return "free"
-    elif "#ffeb3b" in style_lower or "rgb(255, 235, 59)" in style_lower or "yellow" in style_lower:
+    elif any(c in style_lower for c in ["#ffeb3b", "rgb(255, 235, 59)", "yellow"]):
         return "pending"
     return "free"
 
@@ -40,116 +40,99 @@ def run():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1366, "height": 768})
+        # จำลองเบราว์เซอร์ให้เหมือน Google Chrome บน Windows จริงทุกประการ
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768},
+            locale="th-TH",
+            timezone_id="Asia/Bangkok"
+        )
         page = context.new_page()
 
-        # 1. เข้าหน้า Login
-        print("1. เปิดหน้า Login...")
-        page.goto("https://cunexbackoffice.azurewebsites.net/", timeout=60000)
-
-        # 2. เข้าสู่ระบบ
-        print("2. เข้าสู่ระบบ...")
-        page.locator('input[type="text"], input[name*="user"], input[id*="user"]').first.fill(USER)
-        page.locator('input[type="password"]').first.fill(PASS)
-        page.locator('button[type="submit"], input[type="submit"]').first.click()
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(3000)
-
-        # 3. นำทางไปหน้าค้นหาห้อง
-        print("3. นำทางไปหน้าค้นหาการจอง...")
-        # ลองคลิกจากเมนูก่อน หากไม่เจอค่อยเปิดลิงก์ตรง
         try:
-            menu_item = page.locator('text="ค้นหาห้องเพื่อทำการจอง", text="ค้นหาห้อง", a[href*="SearchRoom"]').first
-            if menu_item.is_visible(timeout=5000):
-                menu_item.click()
+            # 1. เข้าหน้า Login
+            print("1. เปิดหน้า Login...")
+            page.goto("https://cunexbackoffice.azurewebsites.net/", timeout=60000, wait_until="networkidle")
+
+            # 2. เข้าสู่ระบบ
+            print("2. เข้าสู่ระบบ...")
+            page.locator('input[type="text"]').first.fill(USER)
+            page.locator('input[type="password"]').first.fill(PASS)
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(5000)
+
+            # ถ่ายภาพหน้าจอหลังล็อกอินเพื่อตรวจเช็ค
+            page.screenshot(path="after_login.png")
+            print(f"URL ปัจจุบัน: {page.url}")
+
+            # 3. นำทางไปหน้าค้นหาห้อง
+            print("3. นำทางไปหน้าค้นหาการจอง...")
+            # ตรวจสอบว่าหน้าปัจจุบันมีปุ่มเมนูค้นหาหรือไม่
+            menu_btn = page.locator('a:has-text("ค้นหาห้อง"), a[href*="SearchRoom"]')
+            if menu_btn.count() > 0:
+                print("พบคลิกจากเมนู...")
+                menu_btn.first.click()
             else:
+                print("เปิด URL ตรง...")
                 page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom", timeout=60000)
-        except Exception:
-            page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom", timeout=60000)
-
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(3000)
-
-        # 4. เลือกตึก อาคาร 60 ปี
-        print("4. กำลังเลือกตึก: อาคาร 60 ปี...")
-        page.wait_for_selector('select', timeout=45000)
-        building_select = page.locator('select').first
-        
-        # ค้นหาตัวเลือกที่มีคำว่า อาคาร 60 ปี
-        options = building_select.locator('option').all()
-        target_value = None
-        for opt in options:
-            if "อาคาร 60 ปี" in opt.inner_text():
-                target_value = opt.get_attribute("value")
-                break
-        
-        if target_value:
-            building_select.select_option(value=target_value)
-        else:
-            building_select.select_option(index=1)
             
-        page.wait_for_timeout(1500)
+            page.wait_for_timeout(5000)
+            page.screenshot(path="search_page.png")
+            print(f"URL หน้าค้นหา: {page.url}")
 
-        # 5. กรอกวันที่ปัจจุบัน
-        print(f"5. กำลังกรอกวันที่: {thai_date}...")
-        date_input = page.locator('input[type="text"]').nth(0)
-        date_input.click()
-        date_input.fill("")
-        date_input.fill(thai_date)
-        page.wait_for_timeout(500)
+            # 4. เลือกตึก อาคาร 60 ปี
+            print("4. กำลังเลือกตึก: อาคาร 60 ปี...")
+            page.wait_for_selector('select', timeout=20000)
+            select_box = page.locator('select').first
+            select_box.select_option(label="อาคาร 60 ปี (สำหรับนิสิตคณะสัตวแพทยศาสตร์)")
+            page.wait_for_timeout(1000)
 
-        # 6. กดปุ่มค้นหา
-        print("6. กำลังกดปุ่มค้นหา...")
-        search_btn = page.locator('button:has-text("ค้นหา"), input[value="ค้นหา"]').first
-        search_btn.click()
+            # 5. กรอกวันที่ปัจจุบัน
+            print(f"5. กำลังกรอกวันที่: {thai_date}...")
+            date_input = page.locator('input[type="text"]').first
+            date_input.fill("")
+            date_input.fill(thai_date)
 
-        # 7. รอผลลัพธ์
-        print("7. กำลังรอการประมวลผลตารางห้อง...")
-        page.wait_for_selector('table', timeout=45000)
-        page.wait_for_timeout(3000)
+            # 6. กดปุ่มค้นหา
+            print("6. กำลังกดปุ่มค้นหา...")
+            page.locator('button:has-text("ค้นหา"), input[value="ค้นหา"]').first.click()
 
-        # 8. อ่านข้อมูลตาราง
-        print("8. กำลังอ่านข้อมูลตารางห้อง...")
-        rows = page.locator('table tr').all()
-        rooms_data = []
+            # 7. รอผลลัพธ์
+            print("7. กำลังรอการประมวลผลตารางห้อง...")
+            page.wait_for_selector('table', timeout=30000)
+            page.wait_for_timeout(2000)
 
-        for row in rows:
-            text = row.inner_text()
-            if "9 ห้อง" in text:
-                cols = row.locator('td').all()
-                if len(cols) >= 12:
-                    room_name = cols[0].inner_text().strip()
-                    slots = []
-                    for c in cols[1:12]:
-                        style = c.get_attribute("style") or ""
-                        slots.append(parse_slot_status(style))
-                    rooms_data.append({
-                        "name": room_name,
-                        "slots": slots
-                    })
+            # 8. อ่านข้อมูลตาราง
+            print("8. กำลังอ่านข้อมูลตารางห้อง...")
+            rows = page.locator('table tr').all()
+            rooms_data = []
 
-        # แทรกห้อง 906 (ปิดปรับปรุงถาวร)
-        room_906_exists = any("906" in r["name"] for r in rooms_data)
-        if not room_906_exists:
-            rooms_data.insert(1, {
-                "name": "ห้อง 906 (ปรับปรุง)",
-                "slots": ["closed"] * 11
-            })
+            for row in rows:
+                text = row.inner_text()
+                if "9 ห้อง" in text:
+                    cols = row.locator('td').all()
+                    if len(cols) >= 12:
+                        room_name = cols[0].inner_text().strip()
+                        slots = [parse_slot_status(c.get_attribute("style")) for c in cols[1:12]]
+                        rooms_data.append({"name": room_name, "slots": slots})
 
-        print(f"ผลลัพธ์: ดึงข้อมูลสำเร็จพบ {len(rooms_data)} ห้อง")
+            # แทรกห้อง 906 (ปรับปรุง)
+            if not any("906" in r["name"] for r in rooms_data):
+                rooms_data.insert(1, {"name": "ห้อง 906 (ปรับปรุง)", "slots": ["closed"] * 11})
 
-        # 9. ส่งข้อมูลเข้า Google Sheets
-        if WEBHOOK_URL:
-            payload = {
-                "date": thai_date,
-                "rooms": rooms_data
-            }
-            res = requests.post(WEBHOOK_URL, json=payload, timeout=30)
-            print(f"ส่งข้อมูลเข้า Google Sheets สำเร็จเรียบร้อย! (Response: {res.status_code})")
-        else:
-            print("คำเตือน: ไม่พบ WEBHOOK_URL ใน Secrets")
+            print(f"ผลลัพธ์: ดึงข้อมูลสำเร็จพบ {len(rooms_data)} ห้อง")
 
-        browser.close()
+            # 9. ส่งข้อมูลเข้า Google Sheets
+            if WEBHOOK_URL:
+                res = requests.post(WEBHOOK_URL, json={"date": thai_date, "rooms": rooms_data}, timeout=30)
+                print(f"ส่งข้อมูลเข้า Google Sheets สำเร็จเรียบร้อย! (Response: {res.status_code})")
+
+        except Exception as e:
+            print(f"เกิดข้อผิดพลาด: {e}")
+            page.screenshot(path="error.png")
+            raise e
+        finally:
+            browser.close()
 
 if __name__ == "__main__":
     run()
