@@ -1,205 +1,133 @@
 import os
-import json
-import time
+import re
+import datetime
 import requests
-from datetime import datetime, timezone, timedelta
 from playwright.sync_api import sync_playwright
 
-CUNEX_USER = os.environ.get("CUNEX_USER")
-CUNEX_PASS = os.environ.get("CUNEX_PASS")
-GAS_WEBHOOK_URL = os.environ.get("GAS_WEBHOOK_URL")
+# อ่านค่า Secret จาก GitHub Environment Variables
+USER = os.environ.get("CUNEX_USER")
+PASS = os.environ.get("CUNEX_PASS")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-LOGIN_URL = "https://cunexbackoffice.azurewebsites.net/Login.aspx"
-TARGET_URL = "https://cunexbackoffice.azurewebsites.net/SearchReservation.aspx"
+# พจนานุกรมแปลงชื่อเดือนภาษาไทย
+THAI_MONTHS = [
+    "", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+]
 
-def parse_cell_status(cell):
-    try:
-        info = cell.evaluate("""el => {
-            const getBg = (node) => {
-                if (!node) return '';
-                const st = window.getComputedStyle(node);
-                return st.backgroundColor || node.getAttribute('bgcolor') || '';
-            };
-            const p = el.querySelector('p');
-            return {
-                tdBg: getBg(el),
-                pBg: getBg(p),
-                className: (el.className || '') + ' ' + (p ? p.className : ''),
-                text: el.innerText || ''
-            };
-        }""")
+def get_thai_date_str():
+    """สร้างสตริงวันที่ภาษาไทย เช่น '10 กันยายน 2569'"""
+    # ปรับ Timezone เป็นประเทศไทย (UTC+7)
+    utc_now = datetime.datetime.now(datetime.timezone.utc)
+    thai_now = utc_now + datetime.timedelta(hours=7)
+    day = thai_now.day
+    month = THAI_MONTHS[thai_now.month]
+    year = thai_now.year + 543
+    return f"{day} {month} {year}"
 
-        td_bg = info.get('tdBg', '').lower()
-        p_bg = info.get('pBg', '').lower()
-        combined = f"{td_bg} {p_bg} {info.get('className', '')} {info.get('text', '')}".lower()
-
-        # ปิดบริการ (สีเทา)
-        gray_keywords = ["gray", "grey", "#808080", "#6c757d", "#555", "#666", "#777", "disabled", "closed", "ปิด"]
-        if any(k in combined for k in gray_keywords):
-            return "closed"
-
-        for bg in [p_bg, td_bg]:
-            if "rgb" in bg:
-                nums = [int(n.strip()) for n in bg.replace("rgba(", "").replace("rgb(", "").replace(")", "").split(",") if n.strip().isdigit()]
-                if len(nums) >= 3:
-                    r, g, b = nums[0], nums[1], nums[2]
-                    if abs(r - g) <= 25 and abs(g - b) <= 25 and abs(r - b) <= 25 and 30 <= r <= 220:
-                        return "closed"
-                    if r > g + 40 and r > b:
-                        return "busy"
-                    if r > 160 and g > 160 and b < 100:
-                        return "pending"
-                    if g > r + 30 and g > b + 30:
-                        return "free"
-
-        if "red" in combined or "#ff0000" in combined or "pink" in combined:
-            return "busy"
-        if "yellow" in combined or "#ffff00" in combined:
-            return "pending"
-        if "green" in combined or "#008000" in combined:
-            return "free"
-
-    except Exception:
-        pass
-
+def parse_slot_status(cell_style):
+    """แปลงสีพื้นหลังของแต่ละช่วงเวลาเป็นสถานะ"""
+    style_lower = (cell_style or "").lower()
+    if "#9e9e9e" in style_lower or "rgb(158, 158, 158)" in style_lower or "grey" in style_lower or "gray" in style_lower:
+        return "closed"
+    elif "#f06292" in style_lower or "rgb(240, 98, 146)" in style_lower or "pink" in style_lower:
+        return "busy"
+    elif "#4caf50" in style_lower or "rgb(76, 175, 80)" in style_lower or "green" in style_lower:
+        return "free"
+    elif "#ffeb3b" in style_lower or "rgb(255, 235, 59)" in style_lower or "yellow" in style_lower:
+        return "pending"
     return "free"
 
-
-def run_scraper():
-    tz_th = timezone(timedelta(hours=7))
-    now_th = datetime.now(tz_th).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now_th}] เริ่มต้นการทำงาน CU NEX Scraper...")
-
-    scraped_data = {
-        "updated_at": now_th,
-        "rooms": []
-    }
+def run():
+    print("=== เริ่มการทำงานดึงข้อมูล CUNEX ผ่าน GitHub Actions ===")
+    thai_date = get_thai_date_str()
+    print(f"วันที่ค้นหา: {thai_date}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # ปรับ User-Agent และพารามิเตอร์เบราว์เซอร์ให้เหมือนผู้ใช้ทั่วไป
-        context = browser.new_context(
-            viewport={"width": 1440, "height": 900},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            locale="th-TH",
-            timezone_id="Asia/Bangkok"
-        )
+        context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
 
-        try:
-            print(f"กำลังเปิดเข้าระบบ CU NEX: {LOGIN_URL}")
-            page.goto(LOGIN_URL, timeout=45000, wait_until="domcontentloaded")
-            time.sleep(2)
+        # 1. เข้าหน้า Login
+        print("1. เปิดหน้า Login...")
+        page.goto("https://cunexbackoffice.azurewebsites.net/", timeout=60000)
 
-            # ตรวจสอบฟอร์มเข้าสู่ระบบ
-            if page.locator("input[type='password']").count() > 0:
-                print("พบหน้าเข้าสู่ระบบ กำลังกรอกรหัส...")
-                page.locator("input[type='text'], input[name*='User'], input[id*='User']").first.fill(CUNEX_USER or "")
-                page.locator("input[type='password']").first.fill(CUNEX_PASS or "")
-                page.locator("input[type='submit'], button[type='submit'], input[value*='เข้าสู่ระบบ']").first.click()
-                print("คลิกปุ่มเข้าสู่ระบบแล้ว กำลังรอ Session...")
-                time.sleep(4)
+        # 2. เข้าสู่ระบบ
+        print("2. เข้าสู่ระบบ...")
+        page.locator('input[type="text"], input[name*="user"], input[id*="user"]').first.fill(USER)
+        page.locator('input[type="password"]').first.fill(PASS)
+        page.locator('button[type="submit"], input[type="submit"]').first.click()
+        page.wait_for_load_state("networkidle")
 
-            # เข้าสู่หน้าค้นหาตารางการจอง
-            print(f"กำลังเปิดหน้าค้นหาห้อง: {TARGET_URL}")
-            page.goto(TARGET_URL, timeout=45000, wait_until="domcontentloaded")
-            time.sleep(3)
+        # 3. นำทางไปหน้าค้นหาห้อง
+        print("3. นำทางไปหน้าค้นหาการจอง...")
+        page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom", timeout=60000)
+        page.wait_for_load_state("networkidle")
 
-            # 1. เลือกตึก อาคาร 60 ปี
-            print("กำลังเลือกตึก อาคาร 60 ปี...")
-            page.wait_for_selector("#MainContentPlaceHolder_ddlBuilding", timeout=15000)
-            page.select_option("#MainContentPlaceHolder_ddlBuilding", value="3")
-            time.sleep(2)
+        # 4. เลือกตึก อาคาร 60 ปี
+        print("4. กำลังเลือกตึก: อาคาร 60 ปี...")
+        building_select = page.locator('select').first
+        building_select.select_option(label="อาคาร 60 ปี (สำหรับนิสิตคณะสัตวแพทยศาสตร์)")
+        page.wait_for_timeout(1000)
 
-            # 2. กระตุ้น ASP.NET PostBack ตรงไปยัง Event ของปุ่มค้นหา
-            print("กำลังส่งสัญญาณ ASP.NET PostBack เพื่อค้นหา...")
-            postback_result = page.evaluate("""() => {
-                // ตรวจสอบ Event Target ของปุ่ม searchLinkButton
-                const linkBtn = document.getElementById('MainContentPlaceHolder_searchLinkButton');
-                if (linkBtn) {
-                    const href = linkBtn.getAttribute('href');
-                    // กรณี href มีคำสั่ง javascript:__doPostBack
-                    if (href && href.includes('__doPostBack')) {
-                        eval(href.replace('javascript:', ''));
-                        return 'Executed href __doPostBack';
-                    }
-                    linkBtn.click();
-                    return 'Executed linkBtn.click()';
-                }
-                
-                // สั่งผ่านฟังก์ชันสากลของ ASP.NET
-                if (typeof __doPostBack === 'function') {
-                    __doPostBack('ctl00$MainContentPlaceHolder$searchLinkButton', '');
-                    return 'Called __doPostBack manually';
-                }
-                
-                return 'No ASP.NET PostBack handler found';
-            }""")
-            print(f"สถานะการส่งคำสั่งค้นหา: {postback_result}")
+        # 5. กรอกวันที่ปัจจุบัน
+        print(f"5. กำลังกรอกวันที่: {thai_date}...")
+        date_input = page.locator('input[type="text"]').nth(0)
+        date_input.fill("")
+        date_input.fill(thai_date)
 
-            # 3. กำหนดเวลารอตารางเรนเดอร์อย่างแน่นอน (ASP.NET DataBind ใช้เวลา 5-7 วินาที)
-            print("กำลังรอการเรนเดอร์ตารางผลลัพธ์...")
-            time.sleep(7)
+        # 6. กดปุ่มค้นหา
+        print("6. กำลังกดปุ่มค้นหา...")
+        search_btn = page.locator('button:has-text("ค้นหา"), input[value="ค้นหา"]').first
+        search_btn.click()
 
-            time_slots = [
-                "08:00 - 09:00", "09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00",
-                "12:00 - 13:00", "13:00 - 14:00", "14:00 - 15:00", "15:00 - 16:00",
-                "16:00 - 17:00", "17:00 - 18:00", "18:00 - 19:00"
-            ]
+        # 7. รอผลลัพธ์
+        print("7. กำลังรอการประมวลผลตารางห้อง...")
+        page.wait_for_selector('table', timeout=30000)
+        page.wait_for_timeout(2000)
 
-            # ตรวจสอบแถวตารางทั้งหมด
-            rows = page.locator("tr").all()
-            print(f"พบแถว tr ทั้งหมด: {len(rows)} แถว")
+        # 8. อ่านข้อมูลตาราง
+        print("8. กำลังอ่านข้อมูลตารางห้อง...")
+        rows = page.locator('table tr').all()
+        rooms_data = []
 
-            for row in rows:
-                cells = row.locator("td").all()
-                if len(cells) < 10:
-                    continue
+        for row in rows:
+            text = row.inner_text()
+            if "9 ห้อง" in text:
+                cols = row.locator('td').all()
+                if len(cols) >= 12:
+                    room_name = cols[0].inner_text().strip()
+                    slots = []
+                    for c in cols[1:12]:
+                        style = c.get_attribute("style") or ""
+                        slots.append(parse_slot_status(style))
+                    rooms_data.append({
+                        "name": room_name,
+                        "slots": slots
+                    })
 
-                room_name = cells[0].inner_text().strip()
-                if not any(char.isdigit() for char in room_name) or ("ชั้น" in room_name and len(room_name) < 5):
-                    continue
+        # แทรกห้อง 906 (ปิดปรับปรุงถาวร)
+        room_906_exists = any("906" in r["name"] for r in rooms_data)
+        if not room_906_exists:
+            rooms_data.insert(1, {
+                "name": "ห้อง 906 (ปรับปรุง)",
+                "slots": ["closed"] * 11
+            })
 
-                room_slots = {}
-                for idx, slot_name in enumerate(time_slots):
-                    cell_idx = idx + 1
-                    if cell_idx < len(cells):
-                        cell = cells[cell_idx]
-                        status = parse_cell_status(cell)
-                        room_slots[slot_name] = status
+        print(f"ผลลัพธ์: ดึงข้อมูลสำเร็จพบ {len(rooms_data)} ห้อง")
 
-                scraped_data["rooms"].append({
-                    "room_name": room_name,
-                    "floor": "9",
-                    "building": "อาคาร 60 ปี",
-                    "slots": room_slots
-                })
+        # 9. ส่งข้อมูลเข้า Google Sheets
+        if WEBHOOK_URL:
+            payload = {
+                "date": thai_date,
+                "rooms": rooms_data
+            }
+            res = requests.post(WEBHOOK_URL, json=payload, timeout=30)
+            print(f"ส่งข้อมูลเข้า Google Sheets สำเร็จเรียบร้อย! (Response: {res.status_code})")
+        else:
+            print("คำเตือน: ไม่พบ WEBHOOK_URL ใน Secrets")
 
-            print(f"ดึงข้อมูลสำเร็จทั้งหมด {len(scraped_data['rooms'])} ห้อง")
-
-        except Exception as e:
-            print(f"เกิดข้อผิดพลาดในการทำงาน: {e}")
-        finally:
-            browser.close()
-
-    # บันทึก data.js
-    try:
-        with open("data.js", "w", encoding="utf-8") as f:
-            f.write(f"window.CUNEX_DATA = {json.dumps(scraped_data, ensure_ascii=False, indent=2)};")
-        print("บันทึก data.js เรียบร้อย")
-    except Exception as e:
-        print(f"บันทึก data.js ไม่สำเร็จ: {e}")
-
-    # ส่งเข้า Google Sheets Webhook
-    if GAS_WEBHOOK_URL and len(scraped_data["rooms"]) > 0:
-        try:
-            print("กำลังส่งข้อมูลเข้า Google Sheets...")
-            res = requests.post(GAS_WEBHOOK_URL, json=scraped_data, timeout=25)
-            print(f"สถานะ GAS Webhook: {res.status_code}")
-        except Exception as e:
-            print(f"ส่งข้อมูล GAS ล้มเหลว: {e}")
-    else:
-        print(f"ข้ามการส่งข้อมูลเข้า Google Sheets (จำนวนห้องที่พบ: {len(scraped_data['rooms'])})")
+        browser.close()
 
 if __name__ == "__main__":
-    run_scraper()
+    run()
