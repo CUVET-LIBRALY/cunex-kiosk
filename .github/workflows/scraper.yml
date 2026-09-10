@@ -6,7 +6,7 @@ on:
     - cron: '30-59/5 0 * * 1-5'
     - cron: '*/5 1-11 * * 1-5'
     - cron: '0 12 * * 1-5'
-  workflow_dispatch: # ปุ่มกดสั่งรันด้วยตนเอง
+  workflow_dispatch: # เพิ่มปุ่มกดสั่งรันด้วยตนเอง
 
 jobs:
   scrape-and-sync:
@@ -33,3 +33,10 @@ jobs:
           WEBHOOK_URL: ${{ secrets.GAS_WEBHOOK_URL }}
         run: |
           python cunex_scraper_cloud.py
+
+      - name: Upload Debug Screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: '*.png'
