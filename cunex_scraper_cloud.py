@@ -14,11 +14,12 @@ THAI_MONTHS = [
 ]
 
 def get_thai_date_str():
-    utc_now = datetime.datetime.now(datetime.timezone.utc)
-    thai_now = utc_now + datetime.timedelta(hours=7)
-    day = thai_now.day
-    month = THAI_MONTHS[thai_now.month]
-    year = thai_now.year + 543
+    utc_now = datetime.timezone.utc
+    utc_time = datetime.datetime.now(utc_now)
+    thai_time = utc_time + datetime.timedelta(hours=7)
+    day = thai_time.day
+    month = THAI_MONTHS[thai_time.month]
+    year = thai_time.year + 543
     return f"{day} {month} {year}"
 
 def parse_slot_status(cell_style):
@@ -51,36 +52,33 @@ def run():
         try:
             # 1. เข้าหน้า Login
             print("1. เปิดหน้า Login...")
-            page.goto("https://cunexbackoffice.azurewebsites.net/", timeout=60000, wait_until="networkidle")
+            page.goto("https://cunexbackoffice.azurewebsites.net/default.aspx", timeout=60000, wait_until="networkidle")
 
             # 2. เข้าสู่ระบบ
             print("2. เข้าสู่ระบบ...")
             page.locator('input[type="text"]').first.fill(USER)
             page.locator('input[type="password"]').first.fill(PASS)
             page.keyboard.press("Enter")
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(4000)
 
-            # ถ่ายภาพหน้าจอหลังล็อกอินเพื่อตรวจเช็ค
-            page.screenshot(path="after_login.png")
-            print(f"URL ปัจจุบัน: {page.url}")
-
-            # 3. นำทางไปหน้าค้นหาห้อง
+            # 3. นำทางไปหน้าค้นหาห้อง (คลิกจากเมนู หรือไป URL ที่มี .aspx)
             print("3. นำทางไปหน้าค้นหาการจอง...")
-            menu_btn = page.locator('a:has-text("ค้นหาห้อง"), a[href*="SearchRoom"]')
-            if menu_btn.count() > 0:
-                print("พบคลิกจากเมนู...")
-                menu_btn.first.click()
+            # พยายามคลิกแถบเมนูด้านบน/ข้าง หรือไปหน้า SearchRoom.aspx
+            menu = page.locator('a:has-text("ค้นหาห้อง"), a:has-text("บริการทั่วไป"), a[href*="Search"]')
+            if menu.count() > 0:
+                print("พบคลิกจากเมนูบนหน้าเว็บ...")
+                menu.first.click()
+                page.wait_for_timeout(3000)
             else:
-                print("เปิด URL ตรง...")
-                page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom", timeout=60000)
-            
-            page.wait_for_timeout(5000)
-            page.screenshot(path="search_page.png")
-            print(f"URL หน้าค้นหา: {page.url}")
+                print("นำทางด้วย URL ตรง SearchRoom.aspx...")
+                page.goto("https://cunexbackoffice.azurewebsites.net/Booking/SearchRoom.aspx", timeout=60000)
+                page.wait_for_timeout(3000)
+
+            page.screenshot(path="search_page_actual.png")
 
             # 4. เลือกตึก อาคาร 60 ปี
             print("4. กำลังเลือกตึก: อาคาร 60 ปี...")
-            page.wait_for_selector('select', timeout=20000)
+            page.wait_for_selector('select', timeout=30000)
             select_box = page.locator('select').first
             select_box.select_option(label="อาคาร 60 ปี (สำหรับนิสิตคณะสัตวแพทยศาสตร์)")
             page.wait_for_timeout(1000)
@@ -100,7 +98,7 @@ def run():
             page.wait_for_selector('table', timeout=30000)
             page.wait_for_timeout(2000)
 
-            # 8. อ่านข้อมูลตาราง
+            # 8. อ่านข้อมูลตารางห้อง
             print("8. กำลังอ่านข้อมูลตารางห้อง...")
             rows = page.locator('table tr').all()
             rooms_data = []
@@ -127,7 +125,7 @@ def run():
 
         except Exception as e:
             print(f"เกิดข้อผิดพลาด: {e}")
-            page.screenshot(path="error.png")
+            page.screenshot(path="error_step.png")
             raise e
         finally:
             browser.close()
