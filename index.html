@@ -41,7 +41,7 @@
       background: linear-gradient(135deg, var(--navy-dark) 0%, var(--navy-accent) 100%);
       color: #ffffff;
       border-radius: 12px;
-      padding: 16px 24px;
+      padding: 14px 22px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -54,11 +54,11 @@
       font-size: 20px;
       font-weight: 700;
       letter-spacing: 0.3px;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
 
     .header-titles p {
-      font-size: 14px;
+      font-size: 13px;
       color: #cbd5e1;
       font-weight: 400;
     }
@@ -66,7 +66,7 @@
     .clock-display {
       background: rgba(255, 255, 255, 0.12);
       border: 1px solid rgba(255, 255, 255, 0.25);
-      padding: 6px 22px;
+      padding: 6px 20px;
       border-radius: 8px;
       font-size: 26px;
       font-weight: 700;
@@ -74,30 +74,48 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* === ปรับแต่งป้าย Legend แบบ Badge ชัดเจน เด่นชัดตามตัวอย่าง === */
     .legend-container {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 10px;
     }
 
-    .legend-item {
-      display: flex;
+    .legend-pill {
+      display: inline-flex;
       align-items: center;
       gap: 6px;
+      padding: 6px 14px;
+      border-radius: 8px;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
     }
 
-    .legend-box {
-      width: 14px;
-      height: 14px;
-      border-radius: 3px;
+    .pill-free {
+      background-color: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
     }
 
-    .box-free { background-color: var(--cu-blue); }
-    .box-pending { background-color: #f59e0b; }
-    .box-busy { background-color: var(--cu-pink); }
-    .box-closed { background-color: #94a3b8; }
+    .pill-pending {
+      background-color: #f59e0b;
+      color: #ffffff;
+      border: 1px solid #d97706;
+    }
+
+    .pill-busy {
+      background-color: #f43f5e;
+      color: #ffffff;
+      border: 1px solid #e11d48;
+    }
+
+    .pill-closed {
+      background-color: #94a3b8;
+      color: #ffffff;
+      border: 1px solid #64748b;
+    }
 
     .table-container {
       flex: 1;
@@ -280,11 +298,20 @@
 
     <div class="clock-display" id="clock">--:--:--</div>
 
+    <!-- แถบกำกับสถานะแบบแคปซูล ชัดเจนสะดุดตา -->
     <div class="legend-container">
-      <div class="legend-item"><div class="legend-box box-free"></div> ว่าง (Free)</div>
-      <div class="legend-item"><div class="legend-box box-pending"></div> รอนุมัติ / สนใจ</div>
-      <div class="legend-item"><div class="legend-box box-busy"></div> ไม่ว่าง / ถูกจอง</div>
-      <div class="legend-item"><div class="legend-box box-closed"></div> ปิดบริการ</div>
+      <div class="legend-pill pill-free">
+        <span>○</span> ว่าง / Free
+      </div>
+      <div class="legend-pill pill-pending">
+        <span>⏱</span> รออนุมัติ / Pending
+      </div>
+      <div class="legend-pill pill-busy">
+        <span>👤</span> ไม่ว่าง / Busy
+      </div>
+      <div class="legend-pill pill-closed">
+        <span>—</span> ปิดบริการ / Closed
+      </div>
     </div>
   </header>
 
@@ -504,7 +531,7 @@
     renderTable();
     updateDateTime();
     setInterval(updateDateTime, 1000);
-    
+
     loadSheetData();
     setInterval(loadSheetData, 60000);
 
