@@ -435,6 +435,8 @@
           tdSlot.className = 'slot-cell';
 
           let status = "free";
+          if (room.id === "906") {
+            status = "closed";
           } else if (roomDataMap[room.id] && roomDataMap[room.id][slot]) {
             status = roomDataMap[room.id][slot];
           }
