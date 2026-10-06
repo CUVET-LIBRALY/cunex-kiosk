@@ -364,7 +364,7 @@
 
     const ROOM_DEFS = [
       { id: "905", name: "9 ห้อง 905", sub: "อาคาร 60 ปี" },
-      { id: "906", name: "ห้อง 906 (ปรับปรุง)", sub: "ชั้น 9 อาคาร 60 ปี" },
+      { id: "906", name: "9 ห้อง 906", sub: "อาคาร 60 ปี" },
       { id: "907", name: "9 ห้อง 907", sub: "อาคาร 60 ปี" },
       { id: "908", name: "9 ห้อง 908", sub: "อาคาร 60 ปี" },
       { id: "927", name: "9 ห้อง 927", sub: "อาคาร 60 ปี" },
@@ -435,9 +435,7 @@
           tdSlot.className = 'slot-cell';
 
           let status = "free";
-          if (room.id === "906") {
-            status = "closed";
-          } else if (roomDataMap[room.id] && roomDataMap[room.id][slot]) {
+          if (roomDataMap[room.id] && roomDataMap[room.id][slot]) {
             status = roomDataMap[room.id][slot];
           }
 
